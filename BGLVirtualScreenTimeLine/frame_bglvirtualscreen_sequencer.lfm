@@ -1,0 +1,58 @@
+object FrameBGLSequencer: TFrameBGLSequencer
+  Left = 0
+  Height = 240
+  Top = 0
+  Width = 320
+  ClientHeight = 240
+  ClientWidth = 320
+  OnExit = FrameExit
+  TabOrder = 0
+  TabStop = True
+  DesignLeft = 466
+  DesignTop = 226
+  object BGLVirtualScreen1: TBGLVirtualScreen
+    AnchorSideLeft.Control = Owner
+    AnchorSideTop.Control = Owner
+    AnchorSideRight.Control = Owner
+    AnchorSideRight.Side = asrBottom
+    AnchorSideBottom.Control = ScrollBar1
+    Left = 0
+    Height = 227
+    Top = 0
+    Width = 320
+    OnRedraw = BGLVirtualScreen1Redraw
+    Anchors = [akTop, akLeft, akRight, akBottom]
+    BevelWidth = 0
+    Color = 855309
+    ParentColor = False
+    TabOrder = 0
+    UseDockManager = False
+    OnUnloadTextures = BGLVirtualScreen1UnloadTextures
+    OnMouseDown = BGLVirtualScreen1MouseDown
+    OnMouseEnter = BGLVirtualScreen1MouseEnter
+    OnMouseLeave = BGLVirtualScreen1MouseLeave
+    OnMouseMove = BGLVirtualScreen1MouseMove
+    OnMouseUp = BGLVirtualScreen1MouseUp
+    OnMouseWheel = BGLVirtualScreen1MouseWheel
+  end
+  object ScrollBar1: TScrollBar
+    AnchorSideLeft.Control = Owner
+    AnchorSideRight.Control = Owner
+    AnchorSideRight.Side = asrBottom
+    AnchorSideBottom.Control = Owner
+    AnchorSideBottom.Side = asrBottom
+    Left = 0
+    Height = 13
+    Top = 227
+    Width = 320
+    Anchors = [akLeft, akRight, akBottom]
+    Constraints.MaxHeight = 22
+    LargeChange = 50
+    Max = 300
+    PageSize = 10
+    SmallChange = 10
+    TabOrder = 1
+    TabStop = False
+    OnScroll = ScrollBar1Scroll
+  end
+end
