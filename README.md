@@ -1,2 +1,2 @@
 # units-common
-Common units for the other repository
+Lazarus/FreePascal common units for my other repositories
