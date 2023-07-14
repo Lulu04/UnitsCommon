@@ -37,11 +37,14 @@ type
     procedure Info(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
     procedure Warning(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
     procedure Error(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
+    // Debug messages are logged only if the application is compiled in debug
+    // mode (with D+ compile flag). When you compile in release mode,the
+    // messages are ignored.
     procedure Debug(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
   end;
 
 var
-  Log: TLog;
+  Log: TLog = NIL;
 
 implementation
 
@@ -60,10 +63,12 @@ end;
 procedure TLog.OpenLogFile;
 begin
   AssignFile(FFile, FFilename);
+
   if not FileExists(FFileName)
     then Rewrite(FFile)
     else Append(FFile);
-  FFileIsOpened:=TRUE;
+
+  FFileIsOpened := FileExists(FFileName);
 end;
 
 procedure TLog.CloseLogFile;
@@ -101,6 +106,7 @@ begin
   try
     if not FFileIsOpened then
       OpenLogFile;
+    if not FFileIsOpened then exit;
 
     Writeln(FFile, aSeparator);
     Flush(FFile);
@@ -115,6 +121,7 @@ begin
   try
     if not FFileIsOpened then
       OpenLogFile;
+    if not FFileIsOpened then exit;
 
     if ShowDateTime then
       Writeln(FFile, Format('%s [%s]',
@@ -138,7 +145,7 @@ end;
 
 procedure TLog.Debug(const aMsg: string; aMarginCount: integer; ShowDateTime: boolean);
 begin
-{$ifdef Debug}
+{$ifopt D+}
   Add('[DD]  '+Margin(aMarginCount)+aMsg, ShowDateTime);
 {$else}
 // avoid compilation hint
