@@ -36,9 +36,13 @@ type
     procedure AddEmptyLine(aSeparator: string='');
     // log a message without prefix
     procedure Mess(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
+    // Log an info message with prefix [II]
     procedure Info(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
+    // Log a warning message with prefix [WW]
     procedure Warning(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
+    // Log an error message with prefix [EE]
     procedure Error(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
+    // Log a debug message with prefix [DD]
     // Debug messages are logged only if the application is compiled in debug
     // mode (with D+ compile flag). When you compile in release mode,the
     // messages are ignored.
