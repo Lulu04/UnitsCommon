@@ -175,6 +175,7 @@ if Log <> NIL then
 begin
   Log.Add('Peace');
   Log.Free;
+  Log := NIL;
 end;
 
 end.
