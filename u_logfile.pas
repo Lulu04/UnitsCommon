@@ -34,6 +34,8 @@ type
 
     procedure DeleteLogFile;
     procedure AddEmptyLine(aSeparator: string='');
+    // log a message without prefix
+    procedure Mess(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
     procedure Info(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
     procedure Warning(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
     procedure Error(const aMsg: string; aMarginCount: integer=0; ShowDateTime: boolean=False);
@@ -168,6 +170,11 @@ end;
 procedure TLog.Info(const aMsg: string; aMarginCount: integer; ShowDateTime: boolean);
 begin
   Add('[II]  '+Margin(aMarginCount)+aMsg, ShowDateTime);
+end;
+
+procedure TLog.Mess(const aMsg: string; aMarginCount: integer; ShowDateTime: boolean);
+begin
+  Add('      '+Margin(aMarginCount)+aMsg, ShowDateTime);
 end;
 
 Finalization
