@@ -56,13 +56,14 @@ function ContenuDuRepertoire(const aFolder: string;
                              const aMasksExt: TStringArray; //NIL pour tous les fichiers ou ['.doc', '.exe',...]
                              aListerLesRepertoires,
                              aListerLesSousRepertoires: boolean): TStringList;
-// Gives the content of a directory
+// Gives the content of the given directory
 function GetDirectoryContent(const aDirectoryPath: string;
                              const aMasksExt: TStringArray; //NIL for all files or ['.doc', '.exe',...]
-                             aListSubFolder: boolean; // set to True to include folder in the list
-                             aListSubFolderUntilLevel: integer=0) // 0 means all sub-folder and sub-sub-folder...
-                                                                  // 1 means only one level of sub-folder
-                                                                  // 2 means sub-folder and sub-sub-folder. and so on...
+                             aListSubFolder: boolean; // set to True to include sub-folder in the list
+                                                      // if False, aListSubFolderUntilLevel is ignored
+                             aListSubFolderUntilLevel: integer=0) // 0 means explore only 'aDirectoryPath'
+                                                                  // 1 means explore one level of sub-folder of 'aDirectoryPath'
+                                                                  // 2 means explore two levels of sub-folder. and so on...
                              : TStringList;
 
 // copie de répertoire entier
