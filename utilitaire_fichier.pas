@@ -56,6 +56,14 @@ function ContenuDuRepertoire(const aFolder: string;
                              const aMasksExt: TStringArray; //NIL pour tous les fichiers ou ['.doc', '.exe',...]
                              aListerLesRepertoires,
                              aListerLesSousRepertoires: boolean): TStringList;
+// Gives the content of a directory
+function GetDirectoryContent(const aDirectoryPath: string;
+                             const aMasksExt: TStringArray; //NIL for all files or ['.doc', '.exe',...]
+                             aListSubFolder: boolean; // set to True to include folder in the list
+                             aListSubFolderUntilLevel: integer=0) // 0 means all sub-folder and sub-sub-folder...
+                                                                  // 1 means only one level of sub-folder
+                                                                  // 2 means sub-folder and sub-sub-folder. and so on...
+                             : TStringList;
 
 // copie de répertoire entier
 // exemple: ('C:\Lazarus\Poire\', 'D:\Cible',...) va copier tous les fichiers/répertoires de Poire dans Cible.
@@ -210,6 +218,57 @@ function ContenuDuRepertoire(const aFolder: string; const aMasksExt: TStringArra
 begin
  Result := TStringList.Create;
  ScruteLeDossier(aFolder, '', Result); // on lance la recherche récursive
+end;
+
+function GetDirectoryContent(const aDirectoryPath: string;
+  const aMasksExt: TStringArray; aListSubFolder: boolean;
+  aListSubFolderUntilLevel: integer): TStringList;
+var currentLevel: integer;
+  function FileHaveOneOfMaskExt(const afile: string): boolean;
+  var i: integer;
+  begin
+   Result := True;
+   if Length(aMasksExt) = 0 then exit;
+
+   for i:=0 to High(aMasksExt) do
+     if UpCase( ExtractFileExt( afile )) = UpCase(aMasksExt[i]) then exit;
+   Result := False;
+  end;
+  procedure ScanFolder(aFolder: string; aSubFolder: string; aSL: TStringList);
+  var
+    Sr: TSearchRec;
+    sd: string;
+  begin
+   inc(currentLevel);
+   if LazFileUtils.FindFirstUTF8(aFolder + string(DIRECTORYSEPARATOR + '*') , faAnyFile , Sr ) = 0 then begin
+     repeat
+      if (Sr.Attr and faDirectory)=faDirectory then begin
+        if ( not((Sr.Name = '.') or (Sr.Name = '..')) ) and
+           aListSubFolder then begin
+          // we find a folder
+          if aSubFolder = ''
+            then sd := Sr.Name
+            else sd := aSubFolder + DIRECTORYSEPARATOR + Sr.Name;
+          aSL.Add( sd );
+          if currentLevel <= aListSubFolderUntilLevel then
+            ScanFolder(aFolder + DIRECTORYSEPARATOR + Sr.Name, sd, aSL);
+        end;
+      end else if FileHaveOneOfMaskExt( Sr.Name ) then begin
+                 // we find a file
+                 if aSubFolder = ''
+                   then aSL.Add(Sr.Name)
+                   else aSL.Add(aSubFolder + DIRECTORYSEPARATOR + Sr.Name);
+      end;
+     until LazFileUtils.FindNextUTF8(Sr) <> 0;
+   end;
+   LazFileUtils.FindCloseUTF8( Sr );
+   dec(currentLevel);
+  end;
+begin
+  if aListSubFolderUntilLevel < 0 then aListSubFolderUntilLevel := 0;
+  currentLevel := 0;
+  Result := TStringList.Create;
+  ScanFolder(aDirectoryPath, '', Result); // start recursive search
 end;
 
 
