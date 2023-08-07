@@ -140,15 +140,6 @@ begin
     if (aContainer.Controls[i] is TWinControl) and RecursiveSearch then
       RedirectChildsOnClickToContainerOnClick(TWinControl(aContainer.Controls[i]), RecursiveSearch);
   end;
-{  for i:=0 to aContainer.ControlCount-1 do
-   if (aContainer.Controls[i] is TWinControl) then begin
-     aContainer.Controls[i].OnClick := aContainer.OnClick;
-     aContainer.Controls[i].Hint := aContainer.Hint;
-     aContainer.Controls[i].Cursor := aContainer.Cursor;
-     if RecursiveSearch then
-       RedirectChildsOnClickToContainerOnClick(TWinControl(aContainer.Controls[i]), RecursiveSearch);
-   end else if (aContainer.Controls[i] is TGraphicControl) then
-              aContainer.Controls[i].OnClick := aContainer.OnClick; }
 end;
 
 { TCheckedLabelManager }
