@@ -546,7 +546,7 @@ begin
   end;
   p.Free;
 end;
- 
+
 function AppleScriptEscape(AText: string): string;
 begin
   result := StringReplace(AText, '\', '\\', [rfReplaceAll]);
