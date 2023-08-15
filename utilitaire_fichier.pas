@@ -552,7 +552,7 @@ begin
   result := StringReplace(AText, '\', '\\', [rfReplaceAll]);
   result := StringReplace(result, '"', '\"', [rfReplaceAll]);
 end;
- 
+
 function MoveFilesToTrash(const AFilenamesUTF8: array of string): boolean;
 var
   appleScript: String;
