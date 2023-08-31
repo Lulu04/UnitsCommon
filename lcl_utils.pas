@@ -8,6 +8,17 @@ interface
 uses
   Classes, SysUtils, Buttons, ExtCtrls,  StdCtrls, Graphics, Controls;
 
+{
+  This is a bunch of utils to workaround certains lacks in LCL
+}
+
+// Customize the application hints
+procedure SetAppHintAttributes(aBackgroundColor,
+                               aFontColor: TColor;
+                               aFontHeight: integer=0;
+                               aFontName: string='default';
+                               aFontStyles: TFontStyles=[];
+                               aAlign: TAlignment=taLeftJustify);
 
 type
 
@@ -128,6 +139,93 @@ var
 
 
 implementation
+uses LCLType, Forms;
+
+type
+  { TAppCustomHint }
+  TAppCustomHint = class(THintWindow)
+  private class var
+     _FBackGroundColor,
+     _FFontColor: TColor;
+     _FFontHeight: integer;
+     _FFontName: string;
+     _FFontStyles: TFontStyles;
+     _FAlign: TAlignment;
+  protected
+  public
+     constructor Create(AOwner: TComponent); override;
+     procedure Paint; override;
+     class procedure InitParam(aBackgroundColor, aFontColor: TColor;
+                               aFontHeight: integer; aFontName: string;
+                               aFontStyles: TFontStyles; aAlign: TAlignment);
+  end;
+
+constructor TAppCustomHint.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  Font.Height := _FFontHeight;
+  Font.Name := _FFontName;
+  Font.Style := _FFontStyles;
+
+  Alignment := _FAlign;
+  with Canvas.Font do begin
+    Height := _FFontHeight;
+    Style := _FFontStyles;
+  end;
+end;
+
+procedure TAppCustomHint.Paint;
+var r: TRect;
+  ts: TTextStyle;
+begin
+  r := ClientRect;
+  with ts do begin
+    Alignment := _FAlign;
+    Layout := tlCenter;
+    SingleLine := False;
+    Clipping := False;
+    Wordbreak := True;
+    Opaque := False;
+    SystemFont := False;
+    RightToLeft := BidiMode<>bdLeftToRight;
+  end;
+
+  with Canvas do begin
+    Brush.Style := bsSolid;
+    Brush.Color := _FBackGroundColor;
+    FillRect(r);
+
+    Canvas.Font.Color := _FFontColor;
+    Canvas.Font.Height := _FFontHeight;
+    Canvas.Font.Name := _FFontName;
+    Canvas.Font.Style := _FFontStyles;
+
+    TextRect(r, 0, 0, Caption, ts);
+  end;
+end;
+
+class procedure TAppCustomHint.InitParam(aBackgroundColor, aFontColor: TColor;
+   aFontHeight: integer; aFontName: string; aFontStyles: TFontStyles;
+                          aAlign: TAlignment);
+begin
+  if aFontName = '' then aFontName := 'default';
+
+  _FBackGroundColor := aBackgroundColor;
+  _FFontColor := aFontColor;
+  _FFontHeight := aFontHeight;
+  _FFontName := aFontName;
+  _FFontStyles := aFontStyles;
+  _FAlign := aAlign;
+end;
+
+procedure SetAppHintAttributes(aBackgroundColor, aFontColor: TColor;
+  aFontHeight: integer; aFontName: string; aFontStyles: TFontStyles;
+  aAlign: TAlignment);
+begin
+  TAppCustomHint.InitParam(aBackgroundColor, aFontColor, aFontHeight, aFontName,
+                           aFontStyles, aAlign);
+  HintWindowClass := TAppCustomHint;
+end;
 
 procedure RedirectChildsOnClickToContainerOnClick(aContainer: TWinControl; RecursiveSearch: boolean);
 var i: integer;
