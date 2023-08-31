@@ -154,10 +154,14 @@ type
   protected
   public
      constructor Create(AOwner: TComponent); override;
+     destructor Destroy; override;
      procedure Paint; override;
      class procedure InitParam(aBackgroundColor, aFontColor: TColor;
                                aFontHeight: integer; aFontName: string;
                                aFontStyles: TFontStyles; aAlign: TAlignment);
+
+     procedure ProcessOnShowHintEvent(var HintStr: string; var CanShow: Boolean;
+                                     var HintInfo: THintInfo);
   end;
 
 constructor TAppCustomHint.Create(AOwner: TComponent);
@@ -167,11 +171,13 @@ begin
   Font.Name := _FFontName;
   Font.Style := _FFontStyles;
 
-  Alignment := _FAlign;
-  with Canvas.Font do begin
-    Height := _FFontHeight;
-    Style := _FFontStyles;
-  end;
+  Application.AddOnShowHintHandler(@ProcessOnShowHintEvent);
+end;
+
+destructor TAppCustomHint.Destroy;
+begin
+  Application.RemoveOnShowHintHandler(@ProcessOnShowHintEvent);
+  inherited Destroy;
 end;
 
 procedure TAppCustomHint.Paint;
@@ -216,6 +222,15 @@ begin
   _FFontName := aFontName;
   _FFontStyles := aFontStyles;
   _FAlign := aAlign;
+end;
+
+procedure TAppCustomHint.ProcessOnShowHintEvent(var HintStr: string;
+  var CanShow: Boolean; var HintInfo: THintInfo);
+begin
+  Font.Height := _FFontHeight;
+  Font.Name := _FFontName;
+  Font.Style := _FFontStyles;
+  Font.Color := _FFontColor;
 end;
 
 procedure SetAppHintAttributes(aBackgroundColor, aFontColor: TColor;
