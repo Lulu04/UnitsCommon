@@ -151,10 +151,12 @@ type
      _FFontName: string;
      _FFontStyles: TFontStyles;
      _FAlign: TAlignment;
-  protected
+  private
+     procedure _SetFont;
   public
      constructor Create(AOwner: TComponent); override;
      destructor Destroy; override;
+     procedure AfterConstruction; override;
      procedure Paint; override;
      class procedure InitParam(aBackgroundColor, aFontColor: TColor;
                                aFontHeight: integer; aFontName: string;
@@ -164,13 +166,18 @@ type
                                      var HintInfo: THintInfo);
   end;
 
+procedure TAppCustomHint._SetFont;
+begin
+  Font.Height := ScaleDesignToForm(_FFontHeight);
+  Font.Name := _FFontName;
+  Font.Style := _FFontStyles;
+  Font.Color := _FFontColor;
+end;
+
 constructor TAppCustomHint.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  Font.Height := _FFontHeight;
-  Font.Name := _FFontName;
-  Font.Style := _FFontStyles;
-
+  _SetFont;
   Application.AddOnShowHintHandler(@ProcessOnShowHintEvent);
 end;
 
@@ -178,6 +185,12 @@ destructor TAppCustomHint.Destroy;
 begin
   Application.RemoveOnShowHintHandler(@ProcessOnShowHintEvent);
   inherited Destroy;
+end;
+
+procedure TAppCustomHint.AfterConstruction;
+begin
+  inherited AfterConstruction;
+  _SetFont;
 end;
 
 procedure TAppCustomHint.Paint;
@@ -202,7 +215,7 @@ begin
     FillRect(r);
 
     Canvas.Font.Color := _FFontColor;
-    Canvas.Font.Height := _FFontHeight;
+    Canvas.Font.Height := ScaleDesignToForm(_FFontHeight);
     Canvas.Font.Name := _FFontName;
     Canvas.Font.Style := _FFontStyles;
 
@@ -227,10 +240,7 @@ end;
 procedure TAppCustomHint.ProcessOnShowHintEvent(var HintStr: string;
   var CanShow: Boolean; var HintInfo: THintInfo);
 begin
-  Font.Height := _FFontHeight;
-  Font.Name := _FFontName;
-  Font.Style := _FFontStyles;
-  Font.Color := _FFontColor;
+  _SetFont;
 end;
 
 procedure SetAppHintAttributes(aBackgroundColor, aFontColor: TColor;
