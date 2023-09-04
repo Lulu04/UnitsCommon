@@ -162,8 +162,8 @@ type
                                aFontHeight: integer; aFontName: string;
                                aFontStyles: TFontStyles; aAlign: TAlignment);
 
-     procedure ProcessOnShowHintEvent(var HintStr: string; var CanShow: Boolean;
-                                     var HintInfo: THintInfo);
+     procedure ProcessOnShowHintEvent(var {%H-}HintStr: string; var {%H-}CanShow: Boolean;
+                                     var {%H-}HintInfo: THintInfo);
   end;
 
 procedure TAppCustomHint._SetFont;
