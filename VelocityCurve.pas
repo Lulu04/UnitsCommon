@@ -149,7 +149,11 @@ type
 
 type
 
-  TParamState = (psNO_CHANGE, psADD_CONSTANT, psUSE_CURVE);
+  TParamState = (psNO_CHANGE=0,    // parameter value is not changing
+                 psADD_CONSTANT,   // adding a constant
+                 psUSE_CURVE,      // using a velocity curve
+                 psCHANGING);      // returned by parameter with multiple sub-param
+                                   // to indicate one of its sub-param is changing
 
   TCustomParam = class
     procedure OnElapse(const AElapsedSec: single); virtual; abstract;
@@ -214,7 +218,6 @@ type
 
   TPointFParam = class(TCustomParam)
   private
-
     function GetPointF: TPointF;
     function GetState: TParamState;
     procedure SetValue(AValue: TPointF);
@@ -259,6 +262,23 @@ type
     procedure ChangeTo(aNewValue: TPolarCoor; aSeconds: single; aCurveID: word = idcLinear);
     property Value: TPolarCoor read GetPolarCoor write SetPolarCoor;
     property CartesianValue: TPointF read GetCartesianValue write SetCartesianValue;
+    property State: TParamState read GetState;
+  end;
+
+
+  { TQuadParamF }
+
+  TQuadParamF = class(TCustomParam)
+  private
+    function GetState: TParamState;
+  public
+    TopLeft,
+    TopRight,
+    BottomRight,
+    BottomLeft: TPointFParam;
+    constructor Create;
+    destructor Destroy; override;
+    procedure OnElapse(const AElapsedSec: single); override;
     property State: TParamState read GetState;
   end;
 
@@ -382,6 +402,50 @@ begin
   Result.y := aCenter.y+sin(aPoint.Angle*Deg2Rad)*aPoint.Distance;
 end;
 
+{ TQuadParamF }
+
+function TQuadParamF.GetState: TParamState;
+begin
+  if (TopLeft.State = psNO_CHANGE) and
+     (TopRight.State = psNO_CHANGE) and
+     (BottomRight.State = psNO_CHANGE) and
+     (BottomLeft.State = psNO_CHANGE) then Result := psNO_CHANGE
+  else if (TopLeft.State = psADD_CONSTANT) and
+     (TopRight.State = psADD_CONSTANT) and
+     (BottomRight.State = psADD_CONSTANT) and
+     (BottomLeft.State = psADD_CONSTANT) then Result := psADD_CONSTANT
+  else if (TopLeft.State = psUSE_CURVE) and
+     (TopRight.State = psUSE_CURVE) and
+     (BottomRight.State = psUSE_CURVE) and
+     (BottomLeft.State = psUSE_CURVE) then Result := psUSE_CURVE
+  else Result := psCHANGING;
+end;
+
+constructor TQuadParamF.Create;
+begin
+  TopLeft := TPointFParam.Create;
+  TopRight := TPointFParam.Create;
+  BottomRight := TPointFParam.Create;
+  BottomLeft := TPointFParam.Create;
+end;
+
+destructor TQuadParamF.Destroy;
+begin
+  FreeAndNil(TopLeft);
+  FreeAndNil(TopRight);
+  FreeAndNil(BottomRight);
+  FreeAndNil(BottomLeft);
+  inherited Destroy;
+end;
+
+procedure TQuadParamF.OnElapse(const AElapsedSec: single);
+begin
+  TopLeft.OnElapse(AElapsedSec);
+  TopRight.OnElapse(AElapsedSec);
+  BottomRight.OnElapse(AElapsedSec);
+  BottomLeft.OnElapse(AElapsedSec);
+end;
+
 { TPolarSystemParam }
 
 function TPolarSystemParam.GetCartesianValue: TPointF;
@@ -404,7 +468,10 @@ begin
  else if (Distance.State = psADD_CONSTANT) and (Angle.State = psADD_CONSTANT) and
          (Center.State = psADD_CONSTANT) then
    Result := psADD_CONSTANT
- else Result := psUSE_CURVE;
+ else if (Distance.State = psUSE_CURVE) and (Angle.State = psUSE_CURVE) and
+         (Center.State = psUSE_CURVE) then
+   Result := psUSE_CURVE
+ else Result := psCHANGING;
 end;
 
 procedure TPolarSystemParam.SetCartesianValue(AValue: TPointF);
@@ -480,8 +547,8 @@ begin
  if (Red.State = psNO_CHANGE) and (Green.State = psNO_CHANGE) and
     (Blue.State = psNO_CHANGE) and (Alpha.State = psNO_CHANGE) then
    Result := psNO_CHANGE
-   else if (Red.State = psADD_CONSTANT) and (Green.State = psADD_CONSTANT) and
-    (Blue.State = psADD_CONSTANT) and (Alpha.State = psADD_CONSTANT) then
+   else if (Red.State = psADD_CONSTANT) or (Green.State = psADD_CONSTANT) or
+    (Blue.State = psADD_CONSTANT) or (Alpha.State = psADD_CONSTANT) then
    Result := psADD_CONSTANT
    else Result := psUSE_CURVE;
 end;
@@ -543,8 +610,10 @@ begin
     Result := psNO_CHANGE
   else if (x.State = psADD_CONSTANT) and (y.State = psADD_CONSTANT) then
     Result := psADD_CONSTANT
+  else if (x.State = psUSE_CURVE) and (y.State = psUSE_CURVE) then
+    Result := psUSE_CURVE
   else
-    Result := psUSE_CURVE;
+    Result := psCHANGING;
 end;
 
 procedure TPointFParam.SetValue(AValue: TPointF);
