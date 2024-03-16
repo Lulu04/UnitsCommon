@@ -25,11 +25,11 @@ unit VelocityCurve;
 interface
 
 uses
-  Classes, SysUtils, Graphics, ExtCtrls, Types
+  Classes, SysUtils, Graphics, ExtCtrls,
 {$IFDEF _UseBGRA}
-  ,BGRABitmap, BGRABitmapTypes
+  BGRABitmap, BGRABitmapTypes,
 {$ENDIF}
-  ;
+  Types;
 
 const
   // available predefined curves IDentificator
@@ -54,16 +54,17 @@ function StringToCurveID(ACurveName: string): word;
 
 type
 
+  TParamState = (psNO_CHANGE=0,    // parameter value is not changing
+                 psADD_CONSTANT,   // adding a constant
+                 psUSE_CURVE,      // using a velocity curve
+                 psCHANGING);      // returned by parameter with multiple sub-param
+                                   // to indicate one of its sub-param is changing
+
+
   TCustomParam = class;
 
   PPointF = ^TPointF;
- {$if FPC_FULLVERSION>=030001}
-  TPointF = Types.TPointF;
- {$else}
-  TPointF = packed record
-    x, y: single;
-  end;
- {$endif}
+
 
   { TDataCurve }
 
@@ -148,12 +149,6 @@ type
 
 
 type
-
-  TParamState = (psNO_CHANGE=0,    // parameter value is not changing
-                 psADD_CONSTANT,   // adding a constant
-                 psUSE_CURVE,      // using a velocity curve
-                 psCHANGING);      // returned by parameter with multiple sub-param
-                                   // to indicate one of its sub-param is changing
 
   TCustomParam = class
     procedure OnElapse(const AElapsedSec: single); virtual; abstract;
@@ -395,8 +390,7 @@ begin
  end;
 end;
 
-function PolarToCartesian(const aCenter: TPointF; const aPoint: TPolarCoor
-  ): TPointF;
+function PolarToCartesian(const aCenter: TPointF; const aPoint: TPolarCoor): TPointF;
 begin
   Result.x := aCenter.x+cos(aPoint.Angle*Deg2Rad)*aPoint.Distance;
   Result.y := aCenter.y+sin(aPoint.Angle*Deg2Rad)*aPoint.Distance;
@@ -518,13 +512,12 @@ end;
 
 procedure TPolarSystemParam.OnElapse(const AElapsedSec: single);
 begin
- Center.OnElapse( AElapsedSec );
- Distance.OnElapse( AElapsedSec );
- Angle.OnElapse( AElapsedSec );
+  Center.OnElapse(AElapsedSec);
+  Distance.OnElapse(AElapsedSec);
+  Angle.OnElapse(AElapsedSec);
 end;
 
-procedure TPolarSystemParam.ChangeTo(aNewValue: TPolarCoor; aSeconds: single;
-  aCurveID: word);
+procedure TPolarSystemParam.ChangeTo(aNewValue: TPolarCoor; aSeconds: single; aCurveID: word);
 begin
  Distance.ChangeTo( aNewValue.Distance, aSeconds, aCurveID );
  Angle.ChangeTo( aNewValue.Angle, aSeconds, aCurveID );
@@ -1039,6 +1032,7 @@ procedure TFParam.OnElapse(const AElapsedSec: single);
 begin
   case FState of
     psADD_CONSTANT: FValue += FConstPerSecond * AElapsedSec;
+
     psUSE_CURVE:
     begin
       FValue := FCurve.Compute(AElapsedSec);
