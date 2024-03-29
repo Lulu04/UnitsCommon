@@ -326,14 +326,17 @@ end;
 
 procedure TCustomProject.Load;
 begin
-  if FIsReady then Close;
-   if not FOD.Execute then exit;
-   FIsNamed := TRUE;
-   FFilename := FOD.FileName;
-   FIsReady := DoLoad( FOD.FileName );
-   HasBeenModified:=FALSE;
-   SetTitleForm;
-   OnProjectReadyChange( FIsReady );
+  if FIsReady then begin
+   if not Close then exit;
+  end;
+
+  if not FOD.Execute then exit;
+  FIsNamed := TRUE;
+  FFilename := FOD.FileName;
+  FIsReady := DoLoad( FOD.FileName );
+  HasBeenModified:=FALSE;
+  SetTitleForm;
+  OnProjectReadyChange( FIsReady );
 end;
 
 procedure TCustomProject.Load(const aFileName: string);
