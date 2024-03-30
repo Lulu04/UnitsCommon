@@ -10,12 +10,12 @@ uses
   BGRABitmap, BGRABitmapTypes, BGRATextFX, BGRAGradients;
 
 // return a TBGRABitmap from an SVG file.
-// aImageWidth and aImageHeight = -1 => return an image with original size as described in svg.
-// aImageWidth and aImageHeight <> -1 => return streched image.
-// Only aImageWidth = '-1' => returned image width is computed from aImageHeight to keep aspect ratio.
-// Only aImageHeight = '-1' => returned image height is computed from aImageWidth to keep aspect ratio.
+// aWidth and aHeight = -1 => return an image with original size as described in svg.
+// aWidth and aHeight <> -1 => return a maximized image that fit in the given rectangle (keep aspect ratio).
+// Only aImageWidth = '-1' => returned image width is computed from aHeight to keep aspect ratio.
+// Only aImageHeight = '-1' => returned image height is computed from aWidth to keep aspect ratio.
 // the drawing is centered in the returned bitmap
-function SVGFileToBGRABitmap(const aSVGFileName: string; aImageWidth: integer=-1; aImageHeight: integer=-1):TBGRABitmap;
+function SVGFileToBGRABitmap(const aSVGFileName: string; aWidth: integer=-1; aHeight: integer=-1):TBGRABitmap;
 
 // return string '$bbggrraa'
 function BGRAPixelToHex( aColor: TBGRAPixel ): string;
@@ -246,7 +246,7 @@ implementation
 uses BGRASVG, BGRAUnits;
 
 
-function SVGFileToBGRABitmap(const aSVGFileName: string; aImageWidth, aImageHeight: integer): TBGRABitmap;
+function SVGFileToBGRABitmap(const aSVGFileName: string; aWidth, aHeight: integer): TBGRABitmap;
 var svg: TBGRASVG;
   FWHFactor, cw, ch: single;
 begin
@@ -257,24 +257,24 @@ begin
    ch := svg.HeightAsPixel;
    FWHFactor := cw/ch;
 
-   if (aImageWidth > -1) and (aImageHeight > -1) then begin
-     Result := TBGRABitmap.Create(aImageWidth, aImageHeight, BGRAPixelTransparent);
-     svg.StretchDraw(Result.Canvas2D, 0, 0, Result.Width, Result.Height, False);
+   if (aWidth > -1) and (aHeight > -1) then begin
+     Result := TBGRABitmap.Create(aWidth, aHeight, BGRAPixelTransparent);
+     svg.StretchDraw(Result.Canvas2D, 0, 0, Result.Width, Result.Height, True);
      exit;
    end;
 
-   if (aImageWidth = -1) and (aImageHeight = -1) then begin
-     aImageWidth := Round(cw);
-     aImageHeight := Round(ch);
+   if (aWidth = -1) and (aHeight = -1) then begin
+     aWidth := Round(cw);
+     aHeight := Round(ch);
    end
    else
-   if aImageWidth = -1
-     then aImageWidth := round(aImageHeight*FWHFactor)
+   if aWidth = -1
+     then aWidth := round(aHeight*FWHFactor)
    else
-   if aImageHeight = -1
-     then aImageHeight := round(aImageWidth/FWHFactor);
-   Result := TBGRABitmap.Create(aImageWidth, aImageHeight, BGRAPixelTransparent);
+   if aHeight = -1
+     then aHeight := round(aWidth/FWHFactor);
 
+   Result := TBGRABitmap.Create(aWidth, aHeight, BGRAPixelTransparent);
    svg.StretchDraw(Result.Canvas2D, taCenter, tlCenter, 0, 0, Result.Width, Result.Height);
  finally
    svg.Free;
