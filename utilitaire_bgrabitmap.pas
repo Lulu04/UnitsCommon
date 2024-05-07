@@ -528,21 +528,11 @@ begin
 end;
 
 function PercentColor(aColor: TBGRAPixel; aPercent: single): TBGRAPixel;
-var v: integer;
 begin
- v:=round(aColor.blue*aPercent);
- if v>255 then Result.blue := 255
-          else Result.blue := v;
-
- v:=round(aColor.green*aPercent);
- if v>255 then Result.green := 255
-          else Result.green := v;
-
- v:=round(aColor.red*aPercent);
- if v>255 then Result.red := 255
-          else Result.red := v;
-
- Result.alpha:=aColor.alpha;
+ Result.Blue := EnsureRange(round(aColor.blue*aPercent), 0, 255);
+ Result.green := EnsureRange(round(aColor.blue*aPercent), 0, 255);
+ Result.red := EnsureRange(round(aColor.red*aPercent), 0, 255);
+ Result.alpha := aColor.alpha;
 end;
 
 
