@@ -192,10 +192,11 @@ var i, v: integer;
 begin
   Result := ValueIndexOf(aPropertyName, i);
   if Result then
-    if TryStrToInt(FProperties[i], v) then
-      Value := v
-    else
-      Value := aDefault;
+    if TryStrToInt(FProperties[i], v) then begin
+      Value := v;
+      exit;
+    end;
+  Value := aDefault;
 end;
 
 function TProperties.Int64ValueOf(const aPropertyName: string;
@@ -205,10 +206,11 @@ var i: integer;
 begin
   Result := ValueIndexOf(aPropertyName, i);
   if Result then
-    if TryStrToInt64(FProperties[i], v) then
-      Value := v
-    else
-      Value := aDefault;
+    if TryStrToInt64(FProperties[i], v) then begin
+      Value := v;
+      exit;
+    end;
+  Value := aDefault;
 end;
 
 function TProperties.SingleValueOf(const aPropertyName: string;
@@ -228,10 +230,11 @@ var i, v: integer;
 begin
   Result := ValueIndexOf(aPropertyName, i);
   if Result then
-    if TryStrToInt(FProperties[i], v) then
-      Value := byte(v)
-    else
-      Value := aDefault;
+    if TryStrToInt(FProperties[i], v) then begin
+      Value := byte(v);
+      exit;
+    end;
+  Value := aDefault;
 end;
 
 function TProperties.WordValueOf(const aPropertyName: string;
@@ -240,10 +243,11 @@ var i, v: integer;
 begin
   Result := ValueIndexOf(aPropertyName, i);
   if Result then
-    if TryStrToInt(FProperties[i], v) then
-      Value := word(v)
-    else
-      Value := aDefault;
+    if TryStrToInt(FProperties[i], v) then begin
+      Value := word(v);
+      exit;
+    end;
+  Value := aDefault;
 end;
 
 procedure TProperties.Init(aSeparator: char);
