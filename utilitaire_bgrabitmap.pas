@@ -5,7 +5,7 @@ unit utilitaire_bgrabitmap;
 interface
 
 uses
-  Classes, SysUtils, Graphics,
+  Classes, SysUtils, Graphics, ExtCtrls,
   strutils, Math,
   BGRABitmap, BGRABitmapTypes, BGRATextFX, BGRAGradients;
 
@@ -16,6 +16,9 @@ uses
 // Only aImageHeight = '-1' => returned image height is computed from aWidth to keep aspect ratio.
 // the drawing is centered in the returned bitmap
 function SVGFileToBGRABitmap(const aSVGFileName: string; aWidth: integer=-1; aHeight: integer=-1):TBGRABitmap;
+
+// load an svg file image to the specified TImage instance.
+procedure SVGFileToTImage(aImage: TImage; const aSVGFileName: string);
 
 // return string '$bbggrraa'
 function BGRAPixelToHex( aColor: TBGRAPixel ): string;
@@ -246,7 +249,7 @@ implementation
 uses BGRASVG, BGRAUnits;
 
 
-function SVGFileToBGRABitmap(const aSVGFileName: string; aWidth, aHeight: integer): TBGRABitmap;
+function SVGFileToBGRABitmap(const aSVGFileName: string; aWidth: integer; aHeight: integer): TBGRABitmap;
 var svg: TBGRASVG;
   FWHFactor, cw, ch: single;
 begin
@@ -279,6 +282,14 @@ begin
  finally
    svg.Free;
  end;
+end;
+
+procedure SVGFileToTImage(aImage: TImage; const aSVGFileName: string);
+var ima: TBGRABitmap;
+begin
+  ima := SVGFileToBGRABitmap(aSVGFileName, aImage.ClientWidth, aImage.ClientHeight);
+  ima.AssignToBitmap(aImage.Picture.Bitmap);
+  ima.Free;
 end;
 
 function BGRAPixelToHex(aColor: TBGRAPixel): string;
