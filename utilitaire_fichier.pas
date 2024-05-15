@@ -82,6 +82,9 @@ procedure RemplitTTreeViewAvecUnRepertoire(const aRepertoire: string;
 //---------------------------------------
 //                CHEMIN
 //---------------------------------------
+
+// returns the parent path
+// ex: from '.../Folder1/SubFolder'  returns  '.../Folder1/'
 function ParentPath( aPath:string ) : string ;
 
 
