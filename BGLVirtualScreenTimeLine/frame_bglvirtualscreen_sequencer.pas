@@ -23,7 +23,7 @@ resourcestring
   NotifyGroupMessage='Group';
   NotifyUnGroupMessage='Ungroup';
   NotifyVerticalShiftMessage='Vertical shift';
-  NotifyRedistributeMessage='Redistribute';
+  NotifyRearrangeMessage='Rearrange';
   NotifyShiftMessage='Shift';
 
 
@@ -45,10 +45,10 @@ type
    FCaption: string;
    FParentSeq: TFrameBGLSequencer;
    FID: integer;
-   FTimePos: single;   // position en seconde de l'étape
+   FTimePos: single;
    FDuration: single;
-   FSelected: boolean;   // =TRUE si l'étape est sélectionnée
-   FGroup: integer;   // numéro du groupe à laquelle l'étape appartient
+   FSelected: boolean;
+   FGroup: integer;
    FTop: integer;
    FWidth: integer;
    procedure SetCaption(AValue: string);
@@ -62,7 +62,7 @@ type
    function Serialize: string; virtual;
    procedure Deserialize( const {%H-}s: string ); virtual;
 
-   // return TRUE if TimePos+aDeltaTime>=0
+   // Return TRUE if TimePos + aDeltaTime >= 0
    function CanApplyTimeOffset( aDeltaTime: single ): boolean;
    procedure UpdateWidth;
 
@@ -70,15 +70,15 @@ type
    property Caption: string read FCaption write SetCaption;
    property Top: integer read FTop write FTop;
    property Width: integer read FWidth write FWidth;
-   // time position in seconds, from 0 to what you need
+   // Time position in seconds, from 0 to what you need
    property TimePos: single read FTimePos write FTimePos;
-   // length of the step in seconds
+   // Length of the step in seconds
    property Duration: single read FDuration write SetDuration;
    // TRUE if the step is in selected mode
    property Selected: boolean read FSelected write SetSelected;
-   // Used to group several steps to manipulates them together. 0=not grouped (default)
+   // The group index to which the step belongs. 0=not grouped (default)
    property Group: integer read FGroup write SetGroup;
-   // unique step ID
+   // Unique step ID
    property ID: integer read FID write FID;
  end;
 
@@ -126,10 +126,6 @@ type
        // Enabled by default.
        bglsStepVerticalLineVisible,
 
-       // Draws the time legend area on the bottom of the view.
-       // Enabled by default.
-       bglsTimeAreaVisible,
-
        // The step's vertical position are dicted by their height
        // Disabled by default
        bglsForceVStepPosition,
@@ -138,9 +134,13 @@ type
        // Disabled by default
        bglsAlternateColorForVStepPosition,
 
-       // Don't allow view scrolling to the right and keep the time 0 always
-       // visible
-       bglsKeepTime0Visible
+       // Draws the time legend area on the bottom of the view.
+       // Enabled by default.
+       bglsTimeAreaVisible,
+
+       // Don't allow view scrolling to the right and keep the time 0 always visible
+       // Disabled by default
+       bglsKeepTimeOriginVisible
        );
 
    TFrameSequencerOptions = set of TFrameBGLSequenceOption;
@@ -173,9 +173,8 @@ type
     procedure DeleteOpenGLObjects;
     // the total height of a step: timepos_height+caption_height+duration_height
     function StepHeight: integer;
-    function ForceYToStepVPos(aY: integer): integer;
-    //
-    function ForceStepTopToBeInStepArea( aStepTop: integer ): integer;
+    function VerticalLineCount: integer;
+    function AdjustYStepIntoLine(aY: integer): integer;
    private
     FBeginTimeGraduation, FDeltaTimeGraduation: single;
     FCounterSmallGraduation: integer;
@@ -189,7 +188,7 @@ type
     FOnMergeStep: TSequencerMergeStepEvent;
     FOnMoveStep: TNotifyEvent;
     FOnNotify: TSequencerNotifyEvent;
-    FOnUserChangeDuration: TNotifyEvent;
+    FOnUserChangeStepDuration: TNotifyEvent;
     procedure DoSelectionChangeEvent; virtual;
     procedure DoViewChangeEvent; virtual;
     procedure DoTimeAreaClickEvent( Button: TMouseButton; Shift: TShiftState; TimePos: single ); virtual;
@@ -205,23 +204,22 @@ type
     FGroupValue: integer;
     FMousePosOrigin: TPoint;
     FTimePosOrigin: single;
-    DragEnCours: boolean;       // pour déplacer une étape
-    DejaDansGestionDragEtape: boolean;
-    ScrollingVue: boolean;      // pour scroller la vue
-    SelectionEnCours: boolean;  // pour sélectionner une étape
+    FUserIsDragingStep: boolean;
+    FAlreadyInDragLoop: boolean;
+    FUserScrollTheView: boolean;
+    FUserDoSelection: boolean;
     FSelectedCount: integer;
-    CTRLAppuye: boolean;   // to duplicate with key CTRL
-    ALTAppuye: boolean;    // to change the duration of a step with leftClick+ALT
-    FReglageDureeStepEnCours: boolean;
+    FCTRLPressed: boolean;   // to duplicate with key CTRL
+    FALTPressed: boolean;    // to change the duration of a step with leftClick+ALT
+    FUserChangeStepDuration: boolean;
     FTimeSelectionLow,
     FTimeSelectionHigh: single;
-    BufferUndo: string;
     function GetID: integer;
     function StepArea: TRect;
     function TimeArea: TRect;
     function TimeBase: integer;
-    function IsInTimeArea( aY: integer ): boolean;
-    function IsInStepArea( aY: integer ): boolean;
+    function IsInTimeArea(aY: integer): boolean;
+    function IsInStepArea(aY: integer): boolean;
     procedure SetID(AValue: integer);
     procedure LoopUserDragStep;
     procedure LoopUserSetStepDuration;
@@ -229,6 +227,7 @@ type
     procedure LoopUserScrollTheViewWithMiddleMouseButton;
    private
     procedure UpdateStepsWidth;
+    procedure UpdateStepsTop;
     function StepUnderMouse: TCustomSequencerStep; // return nil if none
    protected
     function ScreenToTimePos( aP: TPoint ): single;
@@ -249,6 +248,7 @@ type
     FPlayCursorVisible: boolean;
    private
     FNeedStepsWidthUpdate: boolean;
+    FNeedStepsTopUpdate: boolean;
     FOnViewChange: TNotifyEvent;
     FPixelPerSecond: single;
     FView_BeginTime: single;
@@ -275,6 +275,7 @@ type
     Selected: ArrayOfCustomSequencerStep;
     // at the next redraw, forces the recalculation of steps width (will be done in the next redraw event)
     procedure NeedStepsWidthUpdate;
+    procedure NeedStepsTopUpdate;
     procedure UpdateSelectedArray;
     constructor Create(aOwner: TComponent);override;
     destructor Destroy; override;
@@ -332,6 +333,7 @@ type
     procedure Sel_VerticalShift( delta: integer );
     // the selected steps are re-positionned vertically.
     procedure Sel_RecomputeVerticalStepsPosition;
+    procedure RecomputeVerticalStepsPosition;
 
     // return the first selected step or NIL if none.
     function Sel_FirstStepSelected: TCustomSequencerStep;
@@ -342,7 +344,7 @@ type
 
     function AnAreaIsSelected: boolean;
     procedure ForceNoAreaSelected;
-    procedure ForceAreaSelected( aTimeBegin, aTimeEnd: single );
+    procedure ForceAreaSelected(aTimeBegin, aTimeEnd: single);
     function StepCountInSelectedArea: integer;
     function SelectedAreaBeginTime: single;
     function SelectedAreaEndTime: single;
@@ -358,9 +360,9 @@ type
     // set play cursor time position
     procedure UpdatePlayCursorPosition( aTimePos: single );
 
-    // convertie une valeur d'abscisse en valeur de temps. Attention n'ajoute pas View_BeginTime !
+    // converts abscissa to time (without adding View_BeginTime)
     function AbscissaToTimePos( aValue: integer ): single;
-    // convertie un temps en abscisse. Attention soustrait View_BeginTime de aValue !
+    // converts time to abscissa (substract View_BeginTime from aValue)
     function TimePosToAbscissa( aValue: single ): integer;
 
     function TimePosIsBeforeFirstStep( aTimePos: single ): boolean;
@@ -399,11 +401,11 @@ type
     // Fired on any change in the steps list or on a step(s). Used to implement Undo/Redo system
     property OnNotify: TSequencerNotifyEvent read FOnNotify write FOnNotify;
     // Fired when user change the duration of a step
-    property OnUserChangeDuration: TNotifyEvent read FOnUserChangeDuration write FOnUserChangeDuration;
+    property OnUserChangeStepDuration: TNotifyEvent read FOnUserChangeStepDuration write FOnUserChangeStepDuration;
 
     // callback fired when Sel_Merge is called
     // This callback must return the replacement step from the selected ones.
-    // Take care to right settup Caption, Top and TimePos property.
+    // Take care to settup Caption, Top and TimePos property.
     property OnMergeStep: TSequencerMergeStepEvent read FOnMergeStep write FOnMergeStep;
     property OnMoveStep: TNotifyEvent read FOnMoveStep write FOnMoveStep;
 
@@ -510,29 +512,29 @@ end;
 
 function TStepList.GetNextID: integer;
 begin
- Result := FID;
- inc(FID);
+  Result := FID;
+  inc(FID);
 end;
 
 constructor TStepList.Create;
 var FComp: TSequencerStepComparer;
 begin
- FComp := TSequencerStepComparer.Create;
- inherited Create( FComp );
+  FComp := TSequencerStepComparer.Create;
+  inherited Create(FComp);
 end;
 
 function TStepList.Add(constref aStep: TCustomSequencerStep): SizeInt;
 begin
- Result:=inherited Add(aStep);
- aStep.ID := GetNextID;
+  Result:=inherited Add(aStep);
+  aStep.ID := GetNextID;
 end;
 
 procedure TStepList.FreeSteps;
 begin
- while Count>0 do begin
-  Items[0].Free;
-  Delete(0);
- end;
+  while Count>0 do begin
+   Items[0].Free;
+   Delete(0);
+  end;
 end;
 
 procedure TStepList.ResetID;
@@ -543,23 +545,23 @@ end;
 function TStepList.IndexOfID(aId: integer): integer;
 var i: Integer;
 begin
- Result := -1;
- for i := 0 to Count-1 do
-  if Items[i].ID=aID then begin
-   Result := i;
-   exit;
-  end;
+  Result := -1;
+  for i := 0 to Count-1 do
+   if Items[i].ID=aID then begin
+    Result := i;
+    exit;
+   end;
 end;
 
 function TStepList.GetItemByID(aID: integer): TCustomSequencerStep;
 var i: Integer;
 begin
- Result:=NIL;
- for i:=0 to Count-1 do
-  if Items[i].ID=aID then begin
-    Result := Items[i];
-    exit;
-  end;
+  Result := NIL;
+  for i:=0 to Count-1 do
+   if Items[i].ID = aID then begin
+     Result := Items[i];
+     exit;
+   end;
 end;
 
 { TSequencerStepComparer }
@@ -573,8 +575,6 @@ begin
    Result := 1
  else
    Result := -1;
-
-// Result := Sign(ALeft.TimePos - ARight.TimePos);
 end;
 
 { TFrameBGLSequencer }
@@ -582,38 +582,37 @@ end;
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseDown(Sender: TObject;
   Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 var
-  ClickedStep: TCustomSequencerStep;
+  clickedStep: TCustomSequencerStep;
 begin
   // Click on step
-  if not DragEnCours and not ScrollingVue and not FReglageDureeStepEnCours then begin
-    ClickedStep := StepUnderMouse;
-    if ClickedStep <> NIL then
-    begin
-      StepMouseDown( ClickedStep, Button, Shift, X, Y );
+  if not FUserIsDragingStep and not FUserScrollTheView and not FUserChangeStepDuration then begin
+    clickedStep := StepUnderMouse;
+    if clickedStep <> NIL then begin
+      StepMouseDown(clickedStep, Button, Shift, X, Y);
       exit;
     end;
   end;
 
   // Scroll the view with mouse middle button
-  if ( Button = mbMiddle )
-     and not DragEnCours
-     and not (bglsKeepTime0Visible in FOptions) then
+  if (Button = mbMiddle)
+     and not FUserIsDragingStep
+     and not (bglsKeepTimeOriginVisible in FOptions) then
     LoopUserScrollTheViewWithMiddleMouseButton;
 
-  if ( Button = mbRight ) and not ScrollingVue and not DragEnCours then
+  if (Button = mbRight) and not FUserScrollTheView and not FUserIsDragingStep then
   begin
   end;
 
-  if ( Button = mbLeft ) and not ScrollingVue then
-  begin              // on désélectionne tout et on rentre dans la boucle de sélection des étapes
+  if (Button = mbLeft) and not FUserScrollTheView then
+  begin              // unselect all and enter in the step selection loop
     ForceNoAreaSelected;
     Sel_SelectNone;
     DoSelectionChangeEvent;
-    DragEnCours := FALSE;
+    FUserIsDragingStep := FALSE;
     LoopUserDoSelection;
   end;
 
-  CTRLAppuye := FALSE;
+  FCTRLPressed := FALSE;
 end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1UnloadTextures(Sender: TObject;  BGLContext: TBGLContext);
@@ -649,13 +648,12 @@ end;
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseMove(Sender: TObject;
   Shift: TShiftState; X, Y: Integer);
 begin
-  if DragEnCours and not DejaDansGestionDragEtape then begin // on DRAG un label d'étape
+  if FUserIsDragingStep then begin // drag step
     LoopUserDragStep;
   end
-  else if not DragEnCours and not FReglageDureeStepEnCours and not ScrollingVue then begin
-    if StepUnderMouse<>NIL
-      then BGLVirtualScreen1.Cursor:=crHandPoint
-      else BGLVirtualScreen1.Cursor:=crDefault;
+  else if not FUserIsDragingStep and not FUserChangeStepDuration and not FUserScrollTheView then begin
+    if StepUnderMouse <> NIL then BGLVirtualScreen1.Cursor := crHandPoint
+      else BGLVirtualScreen1.Cursor := crDefault;
    UpdateMouseCursorPosition;
    Redraw;
   end;
@@ -664,24 +662,24 @@ end;
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseUp(Sender: TObject;
   Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
-  if ( Button = mbMiddle ) then begin // end of scroll of the view
-    ScrollingVue := FALSE;
+  if (Button = mbMiddle) then begin // end of scroll of the view
+    FUserScrollTheView := FALSE;
     BGLVirtualScreen1.Cursor := crDefault;
+    exit;
   end;
 
   if Button = mbLeft then begin
-    DragEnCours := FALSE;
-    SelectionEnCours := FALSE;
-    FReglageDureeStepEnCours := FALSE;
+    FUserIsDragingStep := FALSE;
+    FUserDoSelection := FALSE;
+    FUserChangeStepDuration := FALSE;
   end;
 
-  if Button = mbRight then begin
-    if IsInTimeArea( Y ) then begin
-      DoTimeAreaClickEvent( Button, Shift, AbscissaToTimePos(X)+View_BeginTime);
-    end else begin
-      DoEmptyAreaClickEvent( Button, Shift, AbscissaToTimePos(X)+View_BeginTime);
-    end;
-  end;
+//  if Button = mbRight then begin
+    if IsInTimeArea(Y) then
+      DoTimeAreaClickEvent(Button, Shift, AbscissaToTimePos(X)+View_BeginTime)
+    else
+      if StepUnderMouse = NIL then DoEmptyAreaClickEvent(Button, Shift, AbscissaToTimePos(X)+View_BeginTime);
+//  end;
 end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseWheel(Sender: TObject;
@@ -689,27 +687,26 @@ procedure TFrameBGLSequencer.BGLVirtualScreen1MouseWheel(Sender: TObject;
 var pps, TimePosTargetedByMouse: single;
   xmouse: LongInt;
 begin
- //call first TFrameBGLSequencer.DoMouseWheel
- Handled := DoMouseWheel(Shift, WheelDelta, MousePos);
- // exit if done
- if Handled=TRUE
-   then exit;
+  //call first TFrameBGLSequencer.DoMouseWheel
+  Handled := DoMouseWheel(Shift, WheelDelta, MousePos);
+  // exit if done
+  if Handled = TRUE then exit;
 
- xmouse := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).x;
- TimePosTargetedByMouse := AbscissaToTimePos( xmouse )+View_BeginTime;
+  xmouse := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).x;
+  TimePosTargetedByMouse := AbscissaToTimePos(xmouse) + View_BeginTime;
 
- pps := PixelPerSecond;
- if WheelDelta<0
-   then pps:=pps-pps*0.2
-   else pps:=pps+pps*0.2;
- PixelPerSecond := pps;
+  pps := PixelPerSecond;
+  if WheelDelta < 0
+    then pps := pps - pps * 0.2
+    else pps := pps + pps * 0.2;
+  PixelPerSecond := pps;
 
- // shift the view according to TimePosTargetedByMouse and xmouse
- // at 'xmouse' one want the time 'TimePosTargetedByMouse'
- View_BeginTime := View_BeginTime -( AbscissaToTimePos( xmouse )+View_BeginTime-TimePosTargetedByMouse);
+  // shift the view according to TimePosTargetedByMouse and xmouse
+  // at 'xmouse' one want the time 'TimePosTargetedByMouse'
+  View_BeginTime := View_BeginTime - (AbscissaToTimePos(xmouse) + View_BeginTime-TimePosTargetedByMouse);
 
- Redraw;
- handled := TRUE;
+  Redraw;
+  handled := TRUE;
 end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1Redraw(Sender: TObject; BGLContext: TBGLContext);
@@ -724,11 +721,22 @@ begin
 
   FInvalidateAlreadySent := FALSE;
 
-  if FOpenGLObjectsNeedToBeReconstruct then
-  begin
+  if FOpenGLObjectsNeedToBeReconstruct then begin
     FOpenGLObjectsNeedToBeReconstruct := False;
     DeleteOpenGLObjects;
     CreateOpenGLObjects;
+  end;
+
+  // update steps Y coordinates
+  if FNeedStepsTopUpdate then begin
+    FNeedStepsTopUpdate := False;
+    UpdateStepsTop;
+  end;
+  // update steps width
+  if FNeedStepsWidthUpdate then
+  begin
+    FNeedStepsWidthUpdate := FALSE;
+    UpdateStepsWidth;
   end;
 
   with BGLContext.Canvas do
@@ -763,8 +771,7 @@ begin
 
     yy := TimeBase;
 
-    if bglsTimeAreaVisible in FOptions then
-    begin
+    if bglsTimeAreaVisible in FOptions then begin
       // abscissa axis
       Line(0, yy, BGLContext.Canvas.Width, yy, FColorXAxis);
       Line(0, yy+1, BGLContext.Canvas.Width, yy+1, FColorXAxis);
@@ -784,13 +791,7 @@ begin
        end;
 
        beginTime := beginTime + FDeltaTimeGraduation;
-      until  beginTime>endtime;
-
-      if FNeedStepsWidthUpdate then
-      begin
-        FNeedStepsWidthUpdate := FALSE;
-        UpdateStepsWidth;
-      end;
+      until  beginTime > endtime;
     end;
 
     if bglsStepVerticalLineVisible in FOptions then
@@ -819,8 +820,8 @@ begin
      end;
      // because a step can not be on vertical position that is not visible
      // one forces it to be in Step area, just in case...
-     if step.Top+FTimeFont.FullHeight*2+FStepFont.FullHeight>StepArea.Height then
-       step.Top := ForceStepTopToBeInStepArea(step.Top);
+//     if step.Top+FTimeFont.FullHeight*2+FStepFont.FullHeight>StepArea.Height then
+//       step.Top := ForceStepTopToBeInStepArea(step.Top);
 
      xx := TimePosToAbscissa(step.TimePos);
      yy := step.Top+FTimeFont.FullHeight;
@@ -879,71 +880,68 @@ end;
 procedure TFrameBGLSequencer.StepMouseDown(Sender: TCustomSequencerStep;
   Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
- CTRLAppuye := ssCtrl in Shift;
- AltAppuye := ssAlt in Shift;
+  FCTRLPressed := ssCtrl in Shift;
+  FALTPressed := ssAlt in Shift;
 
- if (Button = mbLeft) and not AltAppuye  // sélectionne le label ou le groupe, et mémorise la position de la souris pour un éventuel DRAG
-   then begin
-         // prepare the drag operation
-         FMousePosOrigin := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
-         FTimePosOrigin := Sender.TimePos;
-         DragEnCours := TRUE;
-         if not CTRLAppuye then
-         begin
-           // update selected state
-           if not (ssShift in Shift) then
-           begin
-             if not Sender.Selected then
-               Sel_SelectNone;
-             InternalSel_SetSelected(Sender, TRUE);
-           end
-           else InternalSel_ToggleSelected( Sender );
-           UpdateSelectedArray;
-           Redraw;
-           DoSelectionChangeEvent;
-         end;
-   end;
+  if (Button = mbRight) and not FCTRLPressed and not FALTPressed then begin
+    if not Sender.Selected then begin
+      Sel_SelectNone;
+      InternalSel_SetSelected(Sender, TRUE);
+      Redraw;
+    end;
+  end;
+
+  if (Button = mbLeft) and not FALTPressed then begin // sélectionne le label ou le groupe, et mémorise la position de la souris pour un éventuel DRAG
+    // prepare the drag operation
+    FMousePosOrigin := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
+    FTimePosOrigin := Sender.TimePos;
+    FUserIsDragingStep := TRUE;
+    if not FCTRLPressed then begin
+      // update selected state
+      if not (ssShift in Shift) then begin
+        if not Sender.Selected then
+          Sel_SelectNone;
+        InternalSel_SetSelected(Sender, TRUE);
+      end else InternalSel_ToggleSelected(Sender);
+      UpdateSelectedArray;
+      Redraw;
+      DoSelectionChangeEvent;
+    end;
+  end;
 
   // change the duration of the step
-  if (Button = mbLeft) and AltAppuye and (Sender.Duration > 0) and
-    not FReglageDureeStepEnCours then
-  begin
-    if not Sender.Selected then
-    begin
+  if (Button = mbLeft) and FALTPressed and (Sender.Duration > 0) and
+     not FUserChangeStepDuration then begin
+    if not Sender.Selected then begin
       Sel_SelectNone;
       InternalSel_SetSelected(Sender, TRUE);
     end;
     LoopUserSetStepDuration;
-    AltAppuye := FALSE;
+    FALTPressed := FALSE;
   end;
 
- DoStepClickEvent(Sender, Button, Shift);
+  DoStepClickEvent(Sender, Button, Shift);
 end;
 
 function TFrameBGLSequencer.StepHeight: integer;
 begin
-  if (FTimeFont<>NIL) and (FStepFont<>NIL)
-   then Result := FTimeFont.FullHeight*2+FStepFont.FullHeight
-   else Result:=FStepFontHeight+11*2;
+  if (FTimeFont <> NIL) and (FStepFont <> NIL)
+   then Result := FTimeFont.FullHeight * 2 + FStepFont.FullHeight
+   else Result := FStepFontHeight + 11 * 2;
 end;
 
-function TFrameBGLSequencer.ForceYToStepVPos(aY: integer): integer;
-var h: integer;
+function TFrameBGLSequencer.AdjustYStepIntoLine(aY: integer): integer;
+var hStep, ymax: integer;
 begin
-  h:=StepHeight;
-  if bglsForceVStepPosition in FOptions
-    then Result:=aY div h * h
-    else Result:=aY;
-end;
+  hStep := StepHeight;
+  ymax := StepArea.Bottom - hStep;
+  Result := EnsureRange(aY, 0, ymax);
 
-function TFrameBGLSequencer.ForceStepTopToBeInStepArea(aStepTop: integer): integer;
-var lineindex, maxindex: integer;
-begin
-  lineindex := aStepTop div StepHeight;
-  maxindex := StepArea.Height div StepHeight;
-  if lineindex>maxindex
-   then lineindex := lineindex mod maxindex;
-  Result := lineindex*StepHeight;
+  if bglsForceVStepPosition in FOptions then begin
+    Result := Result div hStep;
+    if Result >= VerticalLineCount then Result := VerticalLineCount - 1;
+    Result := Result * hStep;
+  end;
 end;
 
 procedure TFrameBGLSequencer.ComputeGraduationsParameters;
@@ -1006,42 +1004,41 @@ end;
 
 procedure TFrameBGLSequencer.DoSelectionChangeEvent;
 begin
- if FOnSelectionChange<>NIL
-   then FOnSelectionChange( Sel_LastStepSelected );
+  if FOnSelectionChange <> NIL
+    then FOnSelectionChange(Sel_LastStepSelected);
 end;
 
 procedure TFrameBGLSequencer.DoViewChangeEvent;
 begin
- if FOnViewChange<>NIL
-   then FOnViewChange( Self );
+  if FOnViewChange <> NIL
+    then FOnViewChange(Self);
 end;
 
 procedure TFrameBGLSequencer.DoTimeAreaClickEvent(Button: TMouseButton;
   Shift: TShiftState; TimePos: single);
 begin
- if FOnTimeAreaClick<>NIL
-   then FOnTimeAreaClick( Self, Button, Shift, TimePos );
+ if FOnTimeAreaClick <> NIL
+   then FOnTimeAreaClick(Self, Button, Shift, TimePos);
 end;
 
 procedure TFrameBGLSequencer.DoEmptyAreaClickEvent(Button: TMouseButton;
   Shift: TShiftState; TimePos: single);
 begin
- if FOnEmptyAreaClick<>NIL
-   then FOnEmptyAreaClick( Self, Button, Shift, TimePos );
+  if FOnEmptyAreaClick <> NIL
+    then FOnEmptyAreaClick(Self, Button, Shift, TimePos);
 end;
 
 procedure TFrameBGLSequencer.DoStepClickEvent(aStep: TCustomSequencerStep;
   Button: TMouseButton; Shift: TShiftState);
 begin
- if FOnStepClick<>NIL
-   then FOnStepClick( aStep, Button, Shift, aStep.TimePos );
+  if FOnStepClick <> NIL
+    then FOnStepClick(aStep, Button, Shift, aStep.TimePos);
 end;
 
 function TFrameBGLSequencer.DoDuplicateStepEvent(aStep: TCustomSequencerStep ): TCustomSequencerStep;
 begin
- if FOnDuplicateStep<>NIL then begin
-   Result := FOnDuplicateStep( aStep );
- end;
+  if FOnDuplicateStep <> NIL then
+    Result := FOnDuplicateStep(aStep);
 end;
 
 function TFrameBGLSequencer.DoMergeStepEvent: TCustomSequencerStep;
@@ -1059,12 +1056,17 @@ end;
 
 procedure TFrameBGLSequencer.DoUserChangeDurationEvent;
 begin
-  if FOnUserChangeDuration<>NIL then FOnUserChangeDuration(Self);
+  if FOnUserChangeStepDuration<>NIL then FOnUserChangeStepDuration(Self);
 end;
 
 function TFrameBGLSequencer.GetID: integer;
 begin
   Result := FStepList.ID;
+end;
+
+function TFrameBGLSequencer.VerticalLineCount: integer;
+begin
+  Result := StepArea.Height div StepHeight;
 end;
 
 function TFrameBGLSequencer.StepArea: TRect;
@@ -1084,12 +1086,12 @@ end;
 
 function TFrameBGLSequencer.IsInTimeArea(aY: integer): boolean;
 begin
-  Result := aY>BGLVirtualScreen1.ClientHeight-TimeArea.Height;
+  Result := (aY >= TimeArea.Top) and (bglsTimeAreaVisible in FOptions);
 end;
 
 function TFrameBGLSequencer.IsInStepArea(aY: integer): boolean;
 begin
-  Result := (aY>=0) and (aY<BGLVirtualScreen1.ClientHeight-TimeArea.Height);
+  Result :=(aY >= TimeArea.Top) and (ay < TimeArea.Bottom);
 end;
 
 procedure TFrameBGLSequencer.SetID(AValue: integer);
@@ -1099,160 +1101,169 @@ end;
 
 procedure TFrameBGLSequencer.LoopUserDragStep;
 var
- xsouris, XscrollTriggerLeft, XscrollTriggerRight: integer;
+ xMouse, XscrollTriggerLeft, XscrollTriggerRight: integer;
  deltaTime, delta: single;
- stepMoved, _notified: boolean;
+ stepMoved, _notified, canDuplicate: boolean;
 begin
- DejaDansGestionDragEtape := TRUE;
- BGLVirtualScreen1.Cursor := crDrag;
+  if FAlreadyInDragLoop then exit;
+  FAlreadyInDragLoop := TRUE;
+  BGLVirtualScreen1.Cursor := crDrag;
 
- XscrollTriggerLeft := 1;
- XscrollTriggerRight := BGLVirtualScreen1.ClientWidth - 2;
+  XscrollTriggerLeft := 1;
+  XscrollTriggerRight := BGLVirtualScreen1.ClientWidth - 2;
 
- _notified := FALSE;
- stepMoved := FALSE;
- repeat
-  xsouris := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
-  deltaTime := AbscissaToTimePos(xsouris-FMousePosOrigin.X);
-  FMousePosOrigin.X := xsouris;
-
-  if deltaTime <> 0 then begin
-    stepMoved := TRUE;
-    if CTRLAppuye then begin   // on a CONTROL appuyé => on duplique les étapes sélectionnées
-      Sel_DuplicateAndGroup;
-      _notified := TRUE;
-      CTRLAppuye := FALSE;
-    end else if not _notified then begin
-      _notified := TRUE;
-      Notify( Selected, snChanged, NotifyMoveMessage);
-    end;
-    Sel_DragSelection( deltaTime );
-    Redraw;
-  end;
-
-  // on décale la vue si la souris bute contre les extrémités de la vue
-  if not (bglsKeepTime0Visible in FOptions) then
-  begin
-   delta := 0;
-   if xsouris < XscrollTriggerLeft
-     then delta := -1/PixelPerSecond*5
-     else if xsouris > XscrollTriggerRight
-     then delta := 1/PixelPerSecond*5;
-   if delta<>0 then begin
-    View_BeginTime := View_BeginTime + delta;
-    Sel_DragSelection( delta );
+  _notified := False;
+  stepMoved := False;
+  canDuplicate := False;
+  repeat
+   xMouse := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
+   deltaTime := AbscissaToTimePos(xMouse-FMousePosOrigin.X);
+   if FCTRLPressed then begin
+     // before duplication, user must move the mouse at least 20 pixels horizontally
+     canDuplicate := Abs(xMouse-FMousePosOrigin.X) >= ScaleDesignToForm(20);
+   end else begin
+     FMousePosOrigin.X := xMouse;
    end;
-  end;
 
-  Application.ProcessMessages;
- until not DragEnCours;
+   if deltaTime <> 0 then begin
+     if FCTRLPressed and canDuplicate then begin // CTRL pressed = duplicate the selected steps
+       Sel_DuplicateAndGroup;
+       _notified := TRUE;
+       FCTRLPressed := False;
+     end else if not _notified then begin
+       _notified := TRUE;
+       Notify(Selected, snChanged, NotifyMoveMessage);
+     end;
 
- FStepList.Sort;
+     if not FCTRLPressed then begin
+       Sel_DragSelection(deltaTime);
+       Redraw;
+       stepMoved := TRUE;
+     end;
+   end;
 
- Redraw;
- BGLVirtualScreen1.Cursor := crDefault;
- CTRLAppuye := FALSE;
- DejaDansGestionDragEtape := FALSE;
- if stepMoved then DoMoveStepEvent;
+   // shift the view if needed
+   if not (bglsKeepTimeOriginVisible in FOptions) then
+   begin
+    delta := 0;
+    if xMouse < XscrollTriggerLeft
+      then delta := -1/PixelPerSecond*5
+      else if xMouse > XscrollTriggerRight
+      then delta := 1/PixelPerSecond*5;
+    if delta<>0 then begin
+     View_BeginTime := View_BeginTime + delta;
+     Sel_DragSelection( delta );
+    end;
+   end;
+
+   Application.ProcessMessages;
+  until not FUserIsDragingStep;
+
+  FStepList.Sort;
+
+  Redraw;
+  BGLVirtualScreen1.Cursor := crDefault;
+  FCTRLPressed := FALSE;
+  FAlreadyInDragLoop := FALSE;
+  if stepMoved then DoMoveStepEvent;
 end;
 
 procedure TFrameBGLSequencer.LoopUserSetStepDuration;
 var
- xorigin, xsouris, i: integer;
+ xorigin, xMouse, i: integer;
  deltaTime: single;
  _notified: boolean;
 begin
-  FReglageDureeStepEnCours := TRUE;
-  _notified:=FALSE;
+  FUserChangeStepDuration := TRUE;
+  _notified := FALSE;
 
   xorigin := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
   repeat
-   xsouris := BGLVirtualScreen1.ScreenToClient( Mouse.CursorPos ).x;
-   deltaTime := AbscissaToTimePos(xsouris-xorigin);
-   if deltaTime<>0 then begin
+   xMouse := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).x;
+   deltaTime := AbscissaToTimePos(xMouse-xorigin);
+   if deltaTime <> 0 then begin
      if not _notified then begin
        _notified := TRUE;
        Notify(Selected, snChanged, NotifyChangeDurationMessage);
      end;
-     xorigin := xsouris;
+     xorigin := xMouse;
      for i:=0 to High(Selected) do
-       if (Selected[i].Duration>0) and (Selected[i].Duration+deltaTime>0)
+       if (Selected[i].Duration > 0) and (Selected[i].Duration+deltaTime > 0)
          then Selected[i].Duration := Selected[i].Duration+deltaTime;
      Redraw;
    end;
    Sleep(1);
    Application.ProcessMessages;
-  until not FReglageDureeStepEnCours;
+  until not FUserChangeStepDuration;
 
   if _notified then DoUserChangeDurationEvent;
 end;
 
 procedure TFrameBGLSequencer.LoopUserDoSelection;
 var
- i, xsouris, XscrollTriggerLeft, XscrollTriggerRight: integer;
+ i, xMouse, XscrollTriggerLeft, XscrollTriggerRight: integer;
  oldLow, oldHigh, delta, timeorigin, timemouse: single;
  redraw_flag: boolean ;
 begin
- SelectionEnCours := TRUE;
- BGLVirtualScreen1.Cursor := crHSplit;
+  FUserDoSelection := TRUE;
+  BGLVirtualScreen1.Cursor := crHSplit;
 
- timeorigin := AbscissaToTimePos(BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X)+View_BeginTime;
- FTimeSelectionLow := timeorigin;
- FTimeSelectionHigh := FTimeSelectionLow;
+  timeorigin := AbscissaToTimePos(BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X)+View_BeginTime;
+  FTimeSelectionLow := timeorigin;
+  FTimeSelectionHigh := FTimeSelectionLow;
 
- XscrollTriggerLeft := 0;
- XscrollTriggerRight := BGLVirtualScreen1.ClientWidth-1;
+  XscrollTriggerLeft := 0;
+  XscrollTriggerRight := BGLVirtualScreen1.ClientWidth-1;
 
- repeat
-  redraw_flag := FALSE;
-  oldLow := FTimeSelectionLow;
-  oldHigh := FTimeSelectionHigh;
+  repeat
+   redraw_flag := FALSE;
+   oldLow := FTimeSelectionLow;
+   oldHigh := FTimeSelectionHigh;
 
-  // update the selection boundaries
-  xsouris := BGLVirtualScreen1.ScreenToClient( Mouse.CursorPos ).x;
-  timemouse := AbscissaToTimePos(xsouris)+View_BeginTime;
-  if timemouse>timeorigin then begin
-    FTimeSelectionHigh := timemouse;
-    FTimeSelectionLow := timeorigin;
-  end else begin
-    FTimeSelectionHigh := timeorigin;
-    FTimeSelectionLow := timemouse;
-  end;
-  redraw_flag := ( FTimeSelectionLow<>OldLow) or (FTimeSelectionHigh<>oldHigh);
-
-  // scroll the view if the mouse is near the boundaries of the screen
-  if not (bglsKeepTime0Visible in FOptions) then
-  begin
-   delta := 0;
-   if xsouris <= XscrollTriggerLeft
-     then delta := -1/PixelPerSecond*5
-     else if xsouris >= XscrollTriggerRight
-       then delta := 1/PixelPerSecond*5;
-   if delta<>0 then begin
-     redraw_flag:=TRUE;
-     View_BeginTime := View_BeginTime + delta;
+   // update the selection boundaries
+   xMouse := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).x;
+   timemouse := AbscissaToTimePos(xMouse)+View_BeginTime;
+   if timemouse>timeorigin then begin
+     FTimeSelectionHigh := timemouse;
+     FTimeSelectionLow := timeorigin;
+   end else begin
+     FTimeSelectionHigh := timeorigin;
+     FTimeSelectionLow := timemouse;
    end;
-  end;
+   redraw_flag := (FTimeSelectionLow<>OldLow) or (FTimeSelectionHigh<>oldHigh);
 
-  // on retrace
-  if redraw_flag then Redraw;
-  Application.ProcessMessages;
-  sleep(1);
- until not SelectionEnCours;
+   // scroll the view if the mouse is near the boundaries of the screen
+   if not (bglsKeepTimeOriginVisible in FOptions) then
+   begin
+    delta := 0;
+    if xMouse <= XscrollTriggerLeft
+      then delta := -1/PixelPerSecond*5
+      else if xMouse >= XscrollTriggerRight
+         then delta := 1/PixelPerSecond*5;
+    if delta<>0 then begin
+      redraw_flag := TRUE;
+      View_BeginTime := View_BeginTime + delta;
+    end;
+   end;
 
- // on recherche les étapes inclusent dans la sélection et on les sélectionne
- for i:=0 to FStepList.Count-1 do
-  if (FStepList[i].TimePos>=FTimeSelectionLow) and (FStepList[i].TimePos<=FTimeSelectionHigh) then begin
-           InternalSel_SetSelected( FStepList[i], TRUE );
-  end else begin  // on désélectionne l'étape
-           InternalSel_SetSelected( FStepList[i], FALSE );
-  end;
- UpdateSelectedArray;
+   if redraw_flag then Redraw;
+   Application.ProcessMessages;
+   sleep(1);
+  until not FUserDoSelection;
 
- DoSelectionChangeEvent;
- BGLVirtualScreen1.Cursor := crDefault;
- Redraw;
- CTRLAppuye := FALSE;
+  // on recherche les étapes inclusent dans la sélection et on les sélectionne
+  for i:=0 to FStepList.Count-1 do
+   if (FStepList[i].TimePos>=FTimeSelectionLow) and (FStepList[i].TimePos<=FTimeSelectionHigh) then begin
+            InternalSel_SetSelected(FStepList[i], TRUE);
+   end else begin  // on désélectionne l'étape
+            InternalSel_SetSelected(FStepList[i], FALSE);
+   end;
+  UpdateSelectedArray;
+
+  DoSelectionChangeEvent;
+  BGLVirtualScreen1.Cursor := crDefault;
+  Redraw;
+  FCTRLPressed := FALSE;
 end;
 
 procedure TFrameBGLSequencer.LoopUserScrollTheViewWithMiddleMouseButton;
@@ -1260,17 +1271,17 @@ var deltaTime: single;
     p: TPoint;
     xorigine: LongInt;
 begin
- ScrollingVue := TRUE;
- BGLVirtualScreen1.Cursor := crSizeWE;
- xorigine := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
- repeat
-  p := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
-  // scroll the view : deltaTime is relative to mouse position
-  deltaTime := (p.x - xorigine)/PixelPerSecond*0.05;
-  View_BeginTime:=View_BeginTime+deltaTime;
-  Application.ProcessMessages;
- until not ScrollingVue;
- BGLVirtualScreen1.Cursor := crDefault;
+  FUserScrollTheView := TRUE;
+  BGLVirtualScreen1.Cursor := crSizeWE;
+  xorigine := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
+  repeat
+   p := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
+   // scroll the view : deltaTime is relative to mouse position
+   deltaTime := (p.x - xorigine) / PixelPerSecond * 0.05;
+   View_BeginTime := View_BeginTime+deltaTime;
+   Application.ProcessMessages;
+  until not FUserScrollTheView;
+  BGLVirtualScreen1.Cursor := crDefault;
 end;
 
 procedure TFrameBGLSequencer.SetStepFontHeight(AValue: integer);
@@ -1284,7 +1295,7 @@ end;
 
 procedure TFrameBGLSequencer.CreateOpenGLObjects;
 begin
-  FStepFont := BGLFont('Arial', FStepFontHeight, [] );
+  FStepFont := BGLFont('Arial', FStepFontHeight, []);
   FStepFont.Quality := fqSystemClearType;
 
   FTimeFont := BGLFont('Arial', 11, []);
@@ -1306,8 +1317,15 @@ end;
 procedure TFrameBGLSequencer.UpdateStepsWidth;
 var step: TCustomSequencerStep;
 begin
- for step in FStepList do
-   step.UpdateWidth;
+  for step in FStepList do
+    step.UpdateWidth;
+end;
+
+procedure TFrameBGLSequencer.UpdateStepsTop;
+var step: TCustomSequencerStep;
+begin
+  for step in FStepList do
+    step.Top := AdjustYStepIntoLine(step.Top); // ForceStepTopToBeInStepArea(step.Top);
 end;
 
 function TFrameBGLSequencer.StepUnderMouse: TCustomSequencerStep;
@@ -1336,37 +1354,37 @@ end;
 function TFrameBGLSequencer.ScreenToTimePos(aP: TPoint): single;
 begin
   aP := BGLVirtualScreen1.ScreenToClient(aP);
-  Result := AbscissaToTimePos(aP.X)+View_BeginTime;
+  Result := AbscissaToTimePos(aP.X) + View_BeginTime;
 end;
 
 function TFrameBGLSequencer.XMouseToTime: single;
 var p: TPoint;
 begin
- p := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
- Result := AbscissaToTimePos( p.X )+View_BeginTime;
+  p := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
+  Result := AbscissaToTimePos(p.X) + View_BeginTime;
 end;
 
 function TFrameBGLSequencer.MouseIsOverSequencer: boolean;
 var p: TPoint;
 begin
- p := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
- Result := BGLVirtualScreen1.BoundsRect.Contains(p);
+  p := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
+  Result := BGLVirtualScreen1.BoundsRect.Contains(p);
 end;
 
 function TFrameBGLSequencer.YLineUnderMouse: integer;
 begin
-  Result := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).Y div StepFontHeight * StepFontHeight;
+  Result := (BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).Y div StepFontHeight) * StepFontHeight;
 end;
 
 procedure TFrameBGLSequencer.UpdateMouseCursorPosition;
 begin
-  FMouseCursorX:=BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
+  FMouseCursorX := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
 end;
 
 procedure TFrameBGLSequencer.DoOnClipBoardChange;
 begin
- if FOnClipBoardChange<>NIL
-   then FOnClipBoardChange( self );
+  if FOnClipBoardChange <> NIL
+    then FOnClipBoardChange(self);
 end;
 
 procedure TFrameBGLSequencer.DoCopySelectionToClipBoard( aDeleteTheCopied: boolean);
@@ -1374,86 +1392,87 @@ var timeZero: single;
   s, sd: TCustomSequencerStep;
   i: LongInt;
 begin
- if SelectedCount=0 then exit;
+  if SelectedCount = 0 then exit;
 
- if aDeleteTheCopied then Notify(Selected, snDeleted, NotifyCutMessage);
+  if aDeleteTheCopied then Notify(Selected, snDeleted, NotifyCutMessage);
 
- FClipBoard.Clear;
- timeZero := Sel_FirstStepSelected.TimePos;
- for i:=StepList.Count-1 downto 0 do begin
-   s := StepList.Items[i];
-   if s.Selected then begin
-     if aDeleteTheCopied then begin
-       // CUT -> remove the step from sequencer and push it to the clipboard
-         FClipBoard.Insert(0, s);
-         StepList.Remove( s );
-         s.TimePos:=s.TimePos-timeZero;
-     end else begin
-       // COPY -> duplicate the step and push it to the clipboard
-         sd := DoDuplicateStepEvent( s );
-         sd.TimePos:=sd.TimePos-timeZero;
-         FClipBoard.Insert(0, sd);
-     end;
-   end;
- end;
+  FClipBoard.Clear;
+  timeZero := Sel_FirstStepSelected.TimePos;
+  for i:=StepList.Count-1 downto 0 do begin
+    s := StepList.Items[i];
+    if s.Selected then begin
+      if aDeleteTheCopied then begin
+        // CUT -> remove the step from sequencer and push it to the clipboard
+          FClipBoard.Insert(0, s);
+          StepList.Remove(s);
+          s.TimePos := s.TimePos-timeZero;
+      end else begin
+        // COPY -> duplicate the step and push it to the clipboard
+          sd := DoDuplicateStepEvent( s );
+          sd.TimePos := sd.TimePos-timeZero;
+          FClipBoard.Insert(0, sd);
+      end;
+    end;
+  end;
 end;
 
 function TFrameBGLSequencer.GetView_EndTime: single;
 begin
- Result := View_BeginTime + AbscissaToTimePos(BGLVirtualScreen1.ClientWidth);
+  Result := View_BeginTime + AbscissaToTimePos(BGLVirtualScreen1.ClientWidth);
 end;
 
 procedure TFrameBGLSequencer.SetPixelPerSecond(AValue: single);
 var modifiedClientWidth: single;
 begin
 // if AValue=0 then exit;
- if FPixelPerSecond=AValue then Exit;
+  if FPixelPerSecond = AValue then Exit;
 
- modifiedClientWidth := BGLVirtualScreen1.ClientWidth*0.95;
- FPixelPerSecond := EnsureRange( AValue,
-                                modifiedClientWidth/SEQUENCER_VIEW_ZOOM_MAX,
-                                modifiedClientWidth/SEQUENCER_VIEW_ZOOM_MIN );
+  modifiedClientWidth := BGLVirtualScreen1.ClientWidth*0.95;
+  FPixelPerSecond := EnsureRange(AValue,
+                                 modifiedClientWidth/SEQUENCER_VIEW_ZOOM_MAX,
+                                 modifiedClientWidth/SEQUENCER_VIEW_ZOOM_MIN);
 // FPixelPerSecond:=AValue;
- ComputeGraduationsParameters;
- FNeedStepsWidthUpdate := TRUE;
- UpdateScrollBar;
+  ComputeGraduationsParameters;
+  FNeedStepsWidthUpdate := TRUE;
+  UpdateScrollBar;
  //UpdateScrollBarRange;
 
- DoViewChangeEvent;
+  DoViewChangeEvent;
 end;
 
 procedure TFrameBGLSequencer.SetView_BeginTime(AValue: single);
 begin
- if bglsKeepTime0Visible in FOptions then
-   AValue := 0;
+  if bglsKeepTimeOriginVisible in FOptions then
+    AValue := 0;
 
- if AValue = FView_BeginTime then exit;
+  if AValue = FView_BeginTime then exit;
+  if FPixelPerSecond = 0 then exit;
 
- if AValue+(BGLVirtualScreen1.ClientWidth*0.95)/FPixelPerSecond > SEQUENCER_VIEW_MAX_SECONDS
-   then AValue := SEQUENCER_VIEW_MAX_SECONDS-(BGLVirtualScreen1.ClientWidth*0.95)/FPixelPerSecond;
- if AValue < 0 then AValue := 0;
- FView_BeginTime := AValue;
- UpdateScrollBar;
- ComputeGraduationsParameters;
- Redraw;
- DoViewChangeEvent;
+  if AValue+(BGLVirtualScreen1.ClientWidth*0.95)/FPixelPerSecond > SEQUENCER_VIEW_MAX_SECONDS
+    then AValue := SEQUENCER_VIEW_MAX_SECONDS-(BGLVirtualScreen1.ClientWidth*0.95)/FPixelPerSecond;
+  if AValue < 0 then AValue := 0;
+  FView_BeginTime := AValue;
+  UpdateScrollBar;
+  ComputeGraduationsParameters;
+  Redraw;
+  DoViewChangeEvent;
 end;
 
 procedure TFrameBGLSequencer.Sel_DragSelection(deltaTime: single);
 var s: TCustomSequencerStep;
 begin
- s:=Sel_FirstStepSelected;
- if s=NIL then exit;
+  s := Sel_FirstStepSelected;
+  if s = NIL then exit;
 
- // Timepos can not be negative...
- if s.TimePos+deltaTime<0
-   then deltaTime := -s.TimePos;
- if deltaTime=0 then exit;
+  // Timepos can not be negative...
+  if s.TimePos+deltaTime < 0
+    then deltaTime := -s.TimePos;
+  if deltaTime = 0 then exit;
 
- for s in FStepList do
-  if s.Selected
-    then if s.CanApplyTimeOffset( deltaTime )
-           then RawApplyTimeOffsetOnStep( s, deltaTime );
+  for s in FStepList do
+   if s.Selected
+     then if s.CanApplyTimeOffset(deltaTime)
+            then RawApplyTimeOffsetOnStep(s, deltaTime);
 
 // FStepList.Sort;
 end;
@@ -1461,37 +1480,42 @@ end;
 procedure TFrameBGLSequencer.UpdateScrollBar;
 var last: TCustomSequencerStep;
 begin
- ScrollBar1.Position := Round( View_BeginTime*100 );
- //update scrollBar range
- last:=GetLastStep;
- if last<>NIL then begin
-   ScrollBar1.Max := Round(Abs(last.TimePos+last.Duration)*1.02*100);
-   ScrollBar1.PageSize := Round(BGLVirtualScreen1.Width/FPixelPerSecond)*100;
- end else begin
-   ScrollBar1.Max := 100;
-   ScrollBar1.PageSize := 100;
- end;
+  ScrollBar1.Position := Round( View_BeginTime*100 );
+  //update scrollBar range
+  last:=GetLastStep;
+  if last<>NIL then begin
+    ScrollBar1.Max := Round(Abs(last.TimePos+last.Duration)*1.02*100);
+    ScrollBar1.PageSize := Round(BGLVirtualScreen1.Width/FPixelPerSecond)*100;
+  end else begin
+    ScrollBar1.Max := 100;
+    ScrollBar1.PageSize := 100;
+  end;
 end;
 
 procedure TFrameBGLSequencer.NeedStepsWidthUpdate;
 begin
-  FNeedStepsWidthUpdate:=TRUE;
+  FNeedStepsWidthUpdate := TRUE;
+end;
+
+procedure TFrameBGLSequencer.NeedStepsTopUpdate;
+begin
+  FNeedStepsTopUpdate := TRUE;
 end;
 
 procedure TFrameBGLSequencer.UpdateSelectedArray;
 var c: integer;
   s: TCustomSequencerStep;
 begin
- SetLength( Selected, FSelectedCount );
- if FSelectedCount=0 then exit;
- c := 0;
- for s in StepList do
-  if s.Selected then begin
-    if c>=FSelectedCount
-       then Raise Exception.Create(SelectedCountErrorExceptionMessage);
-   Selected[c] := s;
-   inc(c);
-  end;
+  SetLength(Selected, FSelectedCount);
+  if FSelectedCount=0 then exit;
+  c := 0;
+  for s in StepList do
+   if s.Selected then begin
+     if c>=FSelectedCount
+        then Raise Exception.Create(SelectedCountErrorExceptionMessage);
+    Selected[c] := s;
+    inc(c);
+   end;
 end;
 
 constructor TFrameBGLSequencer.Create(aOwner: TComponent);
@@ -1499,20 +1523,19 @@ begin
   inherited Create(aOwner);
   FStepList := TStepList.Create;
   FClipBoard := TStepList.Create;
-  BufferUndo := '';
   FGroupValue := 0;
   FPixelPerSecond := 100;
   ComputeGraduationsParameters;
   FDuplicateValue := 0;
   FStepFontHeight := 13;
-  FOptions:=[bglsStepVerticalLineVisible, bglsTimeAreaVisible];
-  FColorBackground1:=BGRA(40,40,40);
-  FColorTimeArea:=BGRA(5,30,0);
-  FColorTimeLegend:=BGRA(180,180,180);
-  FColorUserAreaSelection:= BGRA(50,100,255,70);//BGRA(32,52,52);
-  FColorXAxis:=BGRA(100,100,0);
+  FOptions := [bglsStepVerticalLineVisible, bglsTimeAreaVisible];
+  FColorBackground1 := BGRA(40,40,40);
+  FColorTimeArea := BGRA(5,5,5);
+  FColorTimeLegend := BGRA(180,180,180);
+  FColorUserAreaSelection := BGRA(50,100,255,70);//BGRA(32,52,52);
+  FColorXAxis := BGRA(100,100,0);
   {$ifdef MSWINDOWS}
-  BGLVirtualScreen1.MultiSampling:=2;
+  BGLVirtualScreen1.MultiSampling := 2;
   {$endif}
 
   FOpenGLObjectsNeedToBeReconstruct := True;
@@ -1521,8 +1544,8 @@ end;
 destructor TFrameBGLSequencer.Destroy;
 begin
   Clear;
-  FStepFont:=NIL;
-  FTimeFont:=NIL;
+  FStepFont := NIL;
+  FTimeFont := NIL;
   FStepList.Free;
   ClipBoard_Clear;
   FClipBoard.Free;
@@ -1534,129 +1557,129 @@ procedure TFrameBGLSequencer.NotifyRange(aStartIndex, aEndIndex: integer;
 var A: ArrayOfCustomSequencerStep;
     i, k: integer;
 begin
- if aStartIndex>aEndIndex then begin
-   i := aEndIndex;
-   aEndIndex := aStartIndex;
-   aStartIndex := i;
- end;
+  if aStartIndex > aEndIndex then begin
+    i := aEndIndex;
+    aEndIndex := aStartIndex;
+    aStartIndex := i;
+  end;
 
- A := NIL;
- SetLength( A, aEndIndex-aStartIndex+1 );
- k := 0;
- for i:=aStartIndex to aEndIndex do begin
-   A[k] := StepList[i];
-   inc(k);
- end;
+  A := NIL;
+  SetLength(A, aEndIndex-aStartIndex+1);
+  k := 0;
+  for i:=aStartIndex to aEndIndex do begin
+    A[k] := StepList[i];
+    inc(k);
+  end;
 
- Notify( A, aAction, aDescription );
+  Notify(A, aAction, aDescription);
 end;
 
 procedure TFrameBGLSequencer.Notify(const aSteps: ArrayOfCustomSequencerStep;
   aAction: TSequencerNotification; const aDescription: string);
 begin
- if FOnNotify<>NIL
-   then FOnNotify( aSteps, aAction, aDescription );
+  if FOnNotify <> NIL
+    then FOnNotify(aSteps, aAction, aDescription);
 end;
 
 procedure TFrameBGLSequencer.Redraw;
 begin
   if not FInvalidateAlreadySent then begin
     BGLVirtualScreen1.Invalidate;
-    FInvalidateAlreadySent:=TRUE;
+    FInvalidateAlreadySent := TRUE;
   end;
 end;
 
 procedure TFrameBGLSequencer.Clear;
 begin
- while FStepList.Count>0 do
-   FStepList.ExtractIndex(0).Free;
- FStepList.ResetID;
+  while FStepList.Count > 0 do
+    FStepList.ExtractIndex(0).Free;
+  FStepList.ResetID;
 
- FSelectedCount := 0;
- ForceNoAreaSelected;
- if not(csDestroying in ComponentState) then begin
-   Redraw;
-   DoSelectionChangeEvent;
- end;
+  FSelectedCount := 0;
+  ForceNoAreaSelected;
+  if not(csDestroying in ComponentState) then begin
+    Redraw;
+    DoSelectionChangeEvent;
+  end;
 end;
 
 procedure TFrameBGLSequencer.Add(aStep: TCustomSequencerStep; aSetSelected: boolean);
 begin
- RawAdd(aStep, aSetSelected);
- FStepList.Sort;
- if aSetSelected then DoSelectionChangeEvent;
- Notify( [aStep], snAdded, NotifyInsertMessage);
+  RawAdd(aStep, aSetSelected);
+  FStepList.Sort;
+  if aSetSelected then DoSelectionChangeEvent;
+  Notify([aStep], snAdded, NotifyInsertMessage);
 end;
 
 procedure TFrameBGLSequencer.RawAdd(aStep: TCustomSequencerStep; aSetSelected: boolean; aSetID: boolean);
 var curID: integer;
 begin
- curID:=aStep.ID;
+  curID := aStep.ID;
 
- aStep.Top:=ForceYToStepVPos(aStep.Top);
- FStepList.Add( aStep );
- aStep.ParentSeq := self;
+  aStep.Top:=AdjustYStepIntoLine(aStep.Top);
+  FStepList.Add(aStep);
+  aStep.ParentSeq := self;
 
- if not aSetID then begin
-   aStep.ID:=curId;
-   FStepList.ID:=FStepList.ID-1;
- end;
+  if not aSetID then begin
+    aStep.ID := curId;
+    FStepList.ID := FStepList.ID-1;
+  end;
 
 
- if aSetSelected then begin
-   aStep.Selected:=TRUE;
-   inc( FSelectedCount );
-   SetLength(Selected, FSelectedCount);
-   Selected[FSelectedCount-1] := aStep;
- end;
+  if aSetSelected then begin
+    aStep.Selected := TRUE;
+    inc(FSelectedCount);
+    SetLength(Selected, FSelectedCount);
+    Selected[FSelectedCount-1] := aStep;
+  end;
 end;
 
 procedure TFrameBGLSequencer.RawDelete(aStep: TCustomSequencerStep);
 var i: LongInt;
 begin
- i := StepList.IndexOf( aStep );
- RawDelete( i );
+  i := StepList.IndexOf(aStep);
+  RawDelete(i);
 end;
 
 procedure TFrameBGLSequencer.Delete(aStep: TCustomSequencerStep; aDoOnSelectionChange: boolean);
 var i: integer;
   flag: boolean;
 begin
- if aStep.Selected then begin
-  dec(FSelectedCount);
-  flag:=TRUE;
- end else flag:=FALSE;
+  if aStep.Selected then begin
+   dec(FSelectedCount);
+   flag := TRUE;
+  end else flag := FALSE;
 
- aStep.Selected:=FALSE;
- Notify( [aStep], snDeleted, NotifyDeleteMessage);
+  aStep.Selected := FALSE;
+  Notify([aStep], snDeleted, NotifyDeleteMessage);
 
- i := FStepList.IndexOf( aStep );
- FStepList.ExtractIndex( i ).Free;
- if flag then UpdateSelectedArray;
+  i := FStepList.IndexOf(aStep);
+  FStepList.ExtractIndex(i).Free;
+  if flag then UpdateSelectedArray;
 
- if aDoOnSelectionChange then begin
-   DoSelectionChangeEvent;
-   Redraw;
- end;
+  if aDoOnSelectionChange then begin
+    DoSelectionChangeEvent;
+    Redraw;
+  end;
 end;
 
 procedure TFrameBGLSequencer.RawDelete(aIndex: integer);
 begin
- with StepList[aIndex] do begin
-  if Selected then begin
-    dec(FSelectedCount);
+  with StepList[aIndex] do begin
+   if Selected then begin
+     dec(FSelectedCount);
+   end;
+   StepList[aIndex].Free;
+   StepList.Delete(aIndex);
   end;
-  StepList[aIndex].Free;
-  StepList.Delete( aIndex );
- end;
 end;
 
 procedure TFrameBGLSequencer.RawDeleteStepByID(aID: integer);
 var i: LongInt;
 begin
- i := StepList.IndexOfID( aID );
- if i<>-1
-   then RawDelete(i);
+  i := StepList.IndexOfID(aID);
+  if i <> -1
+    then RawDelete(i);
 end;
 
 procedure TFrameBGLSequencer.RawReplaceStepByID( aReplacement: TCustomSequencerStep);
@@ -1664,49 +1687,46 @@ var i: integer;
   old: TCustomSequencerStep;
   flagSelectionChange: boolean;
 begin
+  i := StepList.IndexOfID(aReplacement.ID);
+  if i <> -1 then begin
+    flagSelectionChange := FALSE;
+    old := StepList[i];
+    if old.Selected then begin
+      dec(FSelectedCount);
+      flagSelectionChange := TRUE;
+    end;
 
+    aReplacement.Top := old.Top;
+    aReplacement.ParentSeq := old.ParentSeq;
+    aReplacement.UpdateWidth;
 
- i := StepList.IndexOfID( aReplacement.ID );
- if i<>-1 then begin
-   flagSelectionChange:=FALSE;
-   old := StepList[i];
-   if old.Selected then begin
-    dec(FSelectedCount);
-    flagSelectionChange:=TRUE;
-   end;
-
-   aReplacement.Top:=old.Top;
-   aReplacement.ParentSeq:=old.ParentSeq;
-   aReplacement.UpdateWidth;
-
-   StepList[i] := aReplacement;
-   old.Free;
-   if aReplacement.Selected then begin
-    inc(FSelectedCount);
-    flagSelectionChange:=TRUE;
-   end;
-   if flagSelectionChange
-     then UpdateSelectedArray;
- end;
+    StepList[i] := aReplacement;
+    old.Free;
+    if aReplacement.Selected then begin
+     inc(FSelectedCount);
+     flagSelectionChange:=TRUE;
+    end;
+    if flagSelectionChange
+      then UpdateSelectedArray;
+  end;
 end;
 
 procedure TFrameBGLSequencer.RawApplyTimeOffsetOnStep( aStep: TCustomSequencerStep; TimeOffset: single);
 begin
- if aStep.CanApplyTimeOffset(TimeOffset) then begin
-   aStep.TimePos := aStep.TimePos + TimeOffset;
- end;
+  if aStep.CanApplyTimeOffset(TimeOffset) then
+    aStep.TimePos := aStep.TimePos + TimeOffset;
 end;
 
 procedure TFrameBGLSequencer.ClipBoard_CutSelection;
 begin
- DoCopySelectionToClipBoard( TRUE );
- Sel_SelectNone;
- Redraw;
+  DoCopySelectionToClipBoard(True);
+  Sel_SelectNone;
+  Redraw;
 end;
 
 procedure TFrameBGLSequencer.ClipBoard_CopySelection;
 begin
- DoCopySelectionToClipBoard( FALSE );
+  DoCopySelectionToClipBoard(False);
 end;
 
 procedure TFrameBGLSequencer.ClipBoard_PasteTo(aTimePos: single);
@@ -1714,250 +1734,248 @@ var i: integer;
   s: TCustomSequencerStep;
   A: ArrayOfCustomSequencerStep;
 begin
- A := NIL;
- SetLength( A, FClipBoard.Count );
+  A := NIL;
+  SetLength(A, FClipBoard.Count);
 
- Sel_SelectNone;
- for i:=0 to FClipBoard.Count-1 do begin
-  s := DoDuplicateStepEvent( FClipBoard.Items[i] );
-  s.TimePos:=s.TimePos+aTimePos;
-  RawAdd( s, TRUE );
-  A[i] := s;
- end;
- Notify( A, snAdded, NotifyPasteMessage);
- NeedStepsWidthUpdate;
- Redraw;
+  Sel_SelectNone;
+  for i:=0 to FClipBoard.Count-1 do begin
+   s := DoDuplicateStepEvent(FClipBoard.Items[i]);
+   s.TimePos:=s.TimePos+aTimePos;
+   RawAdd(s, TRUE);
+   A[i] := s;
+  end;
+  Notify(A, snAdded, NotifyPasteMessage);
+  NeedStepsWidthUpdate;
+  Redraw;
 end;
 
 procedure TFrameBGLSequencer.ClipBoard_Clear;
 begin
- while FClipBoard.Count>0 do
-   FClipBoard.ExtractIndex(0).Free;
+  while FClipBoard.Count > 0 do
+    FClipBoard.ExtractIndex(0).Free;
 end;
 
 function TFrameBGLSequencer.Clipboard_HasData: boolean;
 begin
- Result := FClipBoard.Count<>0;
+  Result := FClipBoard.Count <> 0;
 end;
 
 procedure TFrameBGLSequencer.Sel_DuplicateAndGroup;
 var i, c: integer;
   s: TCustomSequencerStep;
 begin
- c := 0;
- for i:=FStepList.Count-1 downto 0 do
-  if FStepList[i].Selected then begin
-       FStepList[i].Selected := FALSE ; // on désélectionne l'étape
-       s := DoDuplicateStepEvent( FStepList[i] ); // on la duplique
-       if s<>NIL then begin
-        s.TimePos := FStepList[i].TimePos;
-        s.ParentSeq := self;
-        FStepList.Add( s );
-        Selected[c] := s;
-        inc(c);
-        s.Selected := TRUE;  // et on sélectionne le duplicata
-       end;
+  c := 0;
+  for i:=FStepList.Count-1 downto 0 do
+   if FStepList[i].Selected then begin
+     FStepList[i].Selected := FALSE ; // unselect
+     s := DoDuplicateStepEvent(FStepList[i]); // duplicate
+     if s <> NIL then begin
+       s.TimePos := FStepList[i].TimePos;
+       s.ParentSeq := self;
+       FStepList.Add(s);
+       Selected[c] := s;
+       inc(c);
+       s.Selected := TRUE;  // re-select
+     end;
   end;
- if c > 1 then begin
-  FStepList.Sort;
-  InternalSel_Group; // on groupe la nouvelle sélection
- end;
- NeedStepsWidthUpdate;
- DoSelectionChangeEvent;
- Notify( Selected, snAdded, NotifyDuplicateMessage);
+  if c > 1 then begin
+    FStepList.Sort;
+    InternalSel_Group; // group selected
+  end;
+  NeedStepsWidthUpdate;
+  DoSelectionChangeEvent;
+  Notify(Selected, snAdded, NotifyDuplicateMessage);
 end;
 
 procedure TFrameBGLSequencer.Sel_Merge;
 var replacementStep: TCustomSequencerStep;
 begin
- if SelectedCount<2 then exit;
+  if SelectedCount < 2 then exit;
 
- replacementStep := DoMergeStepEvent();
- if replacementStep=NIL then exit;
+  replacementStep := DoMergeStepEvent();
+  if replacementStep = NIL then exit;
 
- replacementStep.TimePos := Sel_FirstStepSelected.TimePos;
+  replacementStep.TimePos := Sel_FirstStepSelected.TimePos;
 
- Sel_Delete;
+  Sel_Delete;
 
- Add( replacementStep, FALSE );
+  Add(replacementStep, FALSE);
 end;
 
 procedure TFrameBGLSequencer.Sel_Delete;
 var i: integer;
 begin
- if SelectedCount=0 then exit;
- Notify(Selected, snDeleted, NotifyDeleteMessage);
+  if SelectedCount = 0 then exit;
+  Notify(Selected, snDeleted, NotifyDeleteMessage);
 
- for i:=FStepList.Count-1 downto 0 do
-  if FStepList[i].Selected
-    then RawDelete( i );
+  for i:=FStepList.Count-1 downto 0 do
+   if FStepList[i].Selected
+     then RawDelete(i);
 
- FSelectedCount:=0;
- Selected:=NIL;
+  FSelectedCount := 0;
+  Selected := NIL;
 
- DoSelectionChangeEvent;
- Redraw;
+  DoSelectionChangeEvent;
+  Redraw;
 end;
 
 procedure TFrameBGLSequencer.Sel_Group;
 begin
- Notify(Selected, snChanged, NotifyGroupMessage);
- InternalSel_Group;
+  Notify(Selected, snChanged, NotifyGroupMessage);
+  InternalSel_Group;
 end;
 
 procedure TFrameBGLSequencer.InternalSel_Group;
 var i: integer;
 begin
- inc( FGroupValue );
- for i:=0 to FSelectedCount-1 do
-  Selected[i].Group := FGroupValue;
+  inc(FGroupValue);
+  for i:=0 to FSelectedCount-1 do
+   Selected[i].Group := FGroupValue;
 end;
 
 procedure TFrameBGLSequencer.Sel_Ungroup;
 var i: integer;
 begin
- Notify(Selected, snChanged, NotifyUnGroupMessage);
- for i:=0 to FSelectedCount-1 do
-   Selected[i].Group := 0;
+  Notify(Selected, snChanged, NotifyUnGroupMessage);
+  for i:=0 to FSelectedCount-1 do
+    Selected[i].Group := 0;
 end;
 
 function TFrameBGLSequencer.Sel_CanVerticalShift(delta: integer): boolean;
 var ymax: Integer;
   step: TCustomSequencerStep;
 begin
- ymax := TimeArea.Top-StepFontHeight;
- Result := TRUE;
- for step in Selected do
-   Result := Result and InRange(step.Top+delta,0, ymax);
+  ymax := TimeArea.Top-StepFontHeight;
+  Result := TRUE;
+  for step in Selected do
+    Result := Result and InRange(step.Top+delta,0, ymax);
 end;
 
 procedure TFrameBGLSequencer.Sel_VerticalShift(delta: integer);
 var step: TCustomSequencerStep;
-  ymax: Integer;
 begin
- Notify( Selected, snChanged, NotifyVerticalShiftMessage);
- ymax := TimeArea.Top-StepFontHeight;
- for step in Selected do begin
-   step.Top := EnsureRange( step.Top+delta, 0, ymax);
-   step.Top:=ForceYToStepVPos(step.Top);
- end;
+  Notify(Selected, snChanged, NotifyVerticalShiftMessage);
+
+  for step in Selected do
+    step.Top := AdjustYStepIntoLine(step.Top + delta);
 end;
 
 procedure TFrameBGLSequencer.Sel_RecomputeVerticalStepsPosition;
 var k, vLineCount: integer;
   step: TCustomSequencerStep;
 begin
- Notify( Selected, snChanged, NotifyRedistributeMessage);
- vLineCount := StepArea.Height div StepHeight;
- k := 0;
- for step in Selected do begin
-    step.Top := ( k mod vLineCount ) * StepHeight;
-    inc(k);
- end;
- Redraw;
+  Notify(Selected, snChanged, NotifyRearrangeMessage);
+  vLineCount := VerticalLineCount;
+  k := 0;
+  for step in Selected do begin
+     step.Top := (k mod vLineCount) * StepHeight;
+     inc(k);
+  end;
+  Redraw;
+end;
+
+procedure TFrameBGLSequencer.RecomputeVerticalStepsPosition;
+var k, vLineCount: integer;
+  step: TCustomSequencerStep;
+begin
+  Sel_SelectAll;
+  Notify( Selected, snChanged, NotifyRearrangeMessage);
+  Sel_SelectNone;
+  vLineCount := VerticalLineCount;
+  k := 0;
+  for step in FStepList do begin
+     step.Top := ( k mod vLineCount ) * StepHeight;
+     inc(k);
+  end;
+  Redraw;
 end;
 
 function TFrameBGLSequencer.Sel_FirstStepSelected: TCustomSequencerStep;
-//var s: TCustomSequencerStep;
 begin
- if SelectedCount=0
-   then Result := NIL
-   else Result := Selected[0];
-{ Result := NIL;
- for s in FStepList do
-  if s.Selected then begin
-    Result := s;
-    exit;
-  end;  }
+  if SelectedCount = 0
+    then Result := NIL
+    else Result := Selected[0];
 end;
 
 function TFrameBGLSequencer.Sel_LastStepSelected: TCustomSequencerStep;
-//var i: integer;
 begin
- if SelectedCount=0
-   then Result := NIL
-   else Result := Selected[SelectedCount-1];
-{ Result := NIL;
- for i:=FStepList.Count-1 downto 0 do
-  if FStepList[i].Selected then begin
-        Result := FStepList[i];
-        exit;
-  end;  }
+  if SelectedCount = 0
+    then Result := NIL
+    else Result := Selected[SelectedCount-1];
 end;
 
 procedure TFrameBGLSequencer.Sel_SelectNone;
 var s: TCustomSequencerStep;
 begin
- for s in FStepList do
-  s.Selected := FALSE;
- FSelectedCount := 0;
- Selected:=NIL;
- ForceNoAreaSelected;
+  for s in FStepList do
+   s.Selected := FALSE;
+  FSelectedCount := 0;
+  Selected := NIL;
+  ForceNoAreaSelected;
 end;
 
 procedure TFrameBGLSequencer.Sel_SelectAll;
 var i: integer;
 begin
- SetLength(Selected, FStepList.Count);
- for i:=0 to FStepList.Count-1 do begin
-  FStepList[i].Selected := TRUE;
-  Selected[i] := FStepList[i];
- end;
- FSelectedCount := FStepList.Count;
+  SetLength(Selected, FStepList.Count);
+  for i:=0 to FStepList.Count-1 do begin
+   FStepList[i].Selected := TRUE;
+   Selected[i] := FStepList[i];
+  end;
+  FSelectedCount := FStepList.Count;
 end;
 
 procedure TFrameBGLSequencer.InternalSel_SetSelected(aStep: TCustomSequencerStep; SelectedState: boolean);
 var d: Integer;
   s: TCustomSequencerStep;
 begin
- if aStep.Selected = SelectedState then exit;
+  if aStep.Selected = SelectedState then exit;
 
- if SelectedState
-   then d := 1
-   else d := -1;
+  if SelectedState then d := 1
+    else d := -1;
 
- if aStep.Group=0 then begin
-   // single
-   aStep.Selected:=SelectedState;
-   FSelectedCount+=d;
-   UpdateSelectedArray;
- end else begin
-   //group
-   for s in FStepList do
-    if s.Group = aStep.Group then begin
-      s.Selected:=SelectedState;
-      FSelectedCount+=d;
-    end;
-   UpdateSelectedArray;
- end;
+  if aStep.Group=0 then begin
+    // single
+    aStep.Selected:=SelectedState;
+    FSelectedCount+=d;
+    UpdateSelectedArray;
+  end else begin
+    //group
+    for s in FStepList do
+     if s.Group = aStep.Group then begin
+       s.Selected:=SelectedState;
+       FSelectedCount+=d;
+     end;
+    UpdateSelectedArray;
+  end;
 end;
 
 procedure TFrameBGLSequencer.InternalSel_ToggleSelected(aStep: TCustomSequencerStep);
 var s: TCustomSequencerStep;
 begin
- if aStep.Group = 0 then begin
-   // single
-   aStep.Selected := not aStep.Selected;
-   if aStep.Selected
-     then inc(FSelectedCount)
-     else dec(FSelectedCount);
-   UpdateSelectedArray;
- end else begin
-   // group
-    for s in FStepList do
-     if s.Group = aStep.Group then begin
-       s.Selected:=not s.Selected;
-       if s.Selected
-         then inc(FSelectedCount)
-         else dec(FSelectedCount);
-     end;
-     UpdateSelectedArray;
- end;
+  if aStep.Group = 0 then begin
+    // single
+    aStep.Selected := not aStep.Selected;
+    if aStep.Selected
+      then inc(FSelectedCount)
+      else dec(FSelectedCount);
+    UpdateSelectedArray;
+  end else begin
+    // group
+     for s in FStepList do
+      if s.Group = aStep.Group then begin
+        s.Selected := not s.Selected;
+        if s.Selected
+          then inc(FSelectedCount)
+          else dec(FSelectedCount);
+      end;
+      UpdateSelectedArray;
+  end;
 end;
 
 function TFrameBGLSequencer.GetColorBackground: TColor;
 begin
-  Result:=BGLVirtualScreen1.Color;
+  Result := BGLVirtualScreen1.Color;
 end;
 
 procedure TFrameBGLSequencer.SetColorBackground(AValue: TColor);
@@ -1967,129 +1985,126 @@ end;
 
 function TFrameBGLSequencer.AnAreaIsSelected: boolean;
 begin
- Result := (FTimeSelectionLow<FTimeSelectionHigh) and (FTimeSelectionLow>=0);
+  Result := (FTimeSelectionLow<FTimeSelectionHigh) and (FTimeSelectionLow>=0);
 end;
 
 procedure TFrameBGLSequencer.ForceNoAreaSelected;
 begin
- FTimeSelectionLow := FTimeSelectionHigh
+  FTimeSelectionLow := FTimeSelectionHigh
 end;
 
 procedure TFrameBGLSequencer.ForceAreaSelected(aTimeBegin, aTimeEnd: single);
 begin
- if aTimeBegin<0 then exit;
- if aTimeEnd<aTimeBegin then begin
-  FTimeSelectionLow := aTimeEnd;
-  FTimeSelectionHigh := aTimeBegin;
- end else begin
-   FTimeSelectionLow := aTimeBegin;
-   FTimeSelectionHigh := aTimeEnd;
- end;
+  if aTimeBegin < 0 then exit;
+  if aTimeEnd < aTimeBegin then begin
+   FTimeSelectionLow := aTimeEnd;
+   FTimeSelectionHigh := aTimeBegin;
+  end else begin
+    FTimeSelectionLow := aTimeBegin;
+    FTimeSelectionHigh := aTimeEnd;
+  end;
 end;
 
 function TFrameBGLSequencer.StepCountInSelectedArea: integer;
 var i: Integer;
 begin
- Result := 0;
- for i:=0 to FStepList.Count-1 do
-  if InRange( FStepList[i].TimePos, FTimeSelectionLow, FTimeSelectionHigh )
-     then inc( Result );
+  Result := 0;
+  for i:=0 to FStepList.Count-1 do
+   if InRange( FStepList[i].TimePos, FTimeSelectionLow, FTimeSelectionHigh )
+      then inc( Result );
 end;
 
 function TFrameBGLSequencer.SelectedAreaBeginTime: single;
 begin
- if AnAreaIsSelected
-   then Result := FTimeSelectionLow
-   else Result := 0;
+  if AnAreaIsSelected
+    then Result := FTimeSelectionLow
+    else Result := 0;
 end;
 
 function TFrameBGLSequencer.SelectedAreaEndTime: single;
 begin
- if AnAreaIsSelected
-   then Result := FTimeSelectionHigh
-   else Result := 0;
+  if AnAreaIsSelected
+    then Result := FTimeSelectionHigh
+    else Result := 0;
 end;
 
 function TFrameBGLSequencer.SelectedAreaDuration: single;
 begin
- if AnAreaIsSelected
-   then Result := FTimeSelectionHigh - FTimeSelectionLow
-   else Result := 0;
+  if AnAreaIsSelected
+    then Result := FTimeSelectionHigh - FTimeSelectionLow
+    else Result := 0;
 end;
 
 procedure TFrameBGLSequencer.View_All;
 var last: TCustomSequencerStep;
 begin
- View_BeginTime := 0.0;
+  View_BeginTime := 0.0;
 
- last := GetLastStep;
- if last<>NIl then
- begin
-   // x1.2 -> the view will be large enough to show the text of the last step.
-   PixelPerSecond:= BGLVirtualScreen1.ClientWidth/((last.TimePos+last.Duration ) *1.2);
-   Redraw;
- end;
+  last := GetLastStep;
+  if last <> NIl then begin
+    // x1.2 -> the view will be large enough to show the text of the last step.
+    PixelPerSecond:= BGLVirtualScreen1.ClientWidth/((last.TimePos+last.Duration ) *1.2);
+    Redraw;
+  end;
 end;
 
 procedure TFrameBGLSequencer.View_ZoomOnSelectedArea;
 var vbt: single;
 begin
- if AnAreaIsSelected then begin
-   PixelPerSecond := BGLVirtualScreen1.ClientWidth/((FTimeSelectionHigh-FTimeSelectionLow)*1.05);
+  if AnAreaIsSelected then begin
+    PixelPerSecond := BGLVirtualScreen1.ClientWidth/((FTimeSelectionHigh-FTimeSelectionLow)*1.05);
 
-   vbt := (BGLVirtualScreen1.ClientWidth/PixelPerSecond)-(FTimeSelectionHigh-FTimeSelectionLow);
-   vbt := FTimeSelectionLow - vbt/2;
-   View_BeginTime := vbt;
-   Redraw;
- end;
+    vbt := (BGLVirtualScreen1.ClientWidth/PixelPerSecond)-(FTimeSelectionHigh-FTimeSelectionLow);
+    vbt := FTimeSelectionLow - vbt/2;
+    View_BeginTime := vbt;
+    Redraw;
+  end;
 end;
 
 procedure TFrameBGLSequencer.PlayCursorVisible(AValue: boolean);
 begin
-  if FPlayCursorVisible=AValue then exit;
-  FPlayCursorVisible:=AValue;
+  if FPlayCursorVisible = AValue then exit;
+  FPlayCursorVisible := AValue;
   Redraw;
 end;
 
 procedure TFrameBGLSequencer.UpdatePlayCursorPosition(aTimePos: single);
 begin
- if FPlayCursorTimePos=aTimePos then exit;
- FPlayCursorTimePos:=aTimePos;
- Redraw;
+  if FPlayCursorTimePos = aTimePos then exit;
+  FPlayCursorTimePos := aTimePos;
+  Redraw;
 end;
 
 function TFrameBGLSequencer.AbscissaToTimePos(aValue: integer): single;
 begin
- Result := aValue/PixelPerSecond;
+  Result := aValue/PixelPerSecond;
 end;
 
 function TFrameBGLSequencer.TimePosToAbscissa(aValue: single): integer;
 begin
- Result := Round((aValue-View_BeginTime)*PixelPerSecond);
+  Result := Round((aValue-View_BeginTime)*PixelPerSecond);
 end;
 
 function TFrameBGLSequencer.TimePosIsBeforeFirstStep(aTimePos: single): boolean;
 begin
- if FStepList.Count>0
-   then Result := aTimePos < FStepList.Items[0].TimePos
-   else Result := TRUE;
+  if FStepList.Count > 0 then Result := aTimePos < FStepList.Items[0].TimePos
+    else Result := TRUE;
 end;
 
 function TFrameBGLSequencer.TimePosIsAfterLastStep(aTimePos: single): boolean;
 begin
- if FStepList.Count>0
-   then Result := aTimePos > FStepList.Items[FStepList.Count-1].TimePos
-   else Result := TRUE;
+  if FStepList.Count > 0 then Result := aTimePos > FStepList.Items[FStepList.Count-1].TimePos
+    else Result := TRUE;
 end;
 
 function TFrameBGLSequencer.GetStepBefore(aTimePos: single): TCustomSequencerStep;
 var s: TCustomSequencerStep;
 begin
-  Result:=NIL;
-  if FStepList.Count>0 then begin
+  Result := NIL;
+  if FStepList.Count > 0 then begin
     for s in FStepList do
-     if s.TimePos<=aTimePos
-       then Result:=s
+     if s.TimePos <= aTimePos
+       then Result := s
        else exit;
   end;
 end;
@@ -2097,79 +2112,79 @@ end;
 function TFrameBGLSequencer.GetStepAfter(aTimePos: single ): TCustomSequencerStep;
 var i: Integer;
 begin
- Result:=NIL;
- if FStepList.Count>0 then begin
-   for i:=FStepList.Count-1 downto 0 do
-    if FStepList.Items[i].TimePos>aTimePos
-       then Result:=FStepList.Items[i]
-       else exit;
- end;
+  Result := NIL;
+  if FStepList.Count>0 then begin
+    for i:=FStepList.Count-1 downto 0 do
+     if FStepList.Items[i].TimePos > aTimePos
+        then Result := FStepList.Items[i]
+        else exit;
+  end;
 end;
 
 function TFrameBGLSequencer.GetFirstStep: TCustomSequencerStep;
 begin
- if FStepList.Count>0
-   then Result := FStepList.Items[0]
-   else Result := NIL;
+  if FStepList.Count > 0
+    then Result := FStepList.Items[0]
+    else Result := NIL;
 end;
 
 function TFrameBGLSequencer.GetLastStep: TCustomSequencerStep;
 begin
-  if FStepList.Count>0
+  if FStepList.Count > 0
    then Result := FStepList.Items[FStepList.Count-1]
    else Result := NIL;
 end;
 
 procedure TFrameBGLSequencer.ApplyTimeOffsetOnStep(aStep: TCustomSequencerStep; TimeOffset: single);
 begin
- Notify( [aStep], snChanged, NotifyShiftMessage);
- RawApplyTimeOffsetOnStep( aStep, TimeOffset );
+  Notify([aStep], snChanged, NotifyShiftMessage);
+  RawApplyTimeOffsetOnStep(aStep, TimeOffset);
 end;
 
 procedure TFrameBGLSequencer.ShiftStepTimePositionFrom( aFirstStep: TCustomSequencerStep; TimeOffset: single);
 var k, i: LongInt;
 begin
- k := FStepList.IndexOf( aFirstStep );
+  k := FStepList.IndexOf(aFirstStep);
 
- NotifyRange( k, StepList.Count-1, snChanged, 'Décaler');
+  NotifyRange( k, StepList.Count-1, snChanged, 'Décaler');
 
- for i:=k to FStepList.Count-1 do
-  RawApplyTimeOffsetOnStep( FStepList.Items[i], TimeOffset );
- FStepList.Sort;
- Redraw;
+  for i:=k to FStepList.Count-1 do
+   RawApplyTimeOffsetOnStep(FStepList.Items[i], TimeOffset);
+  FStepList.Sort;
+  Redraw;
 end;
 
 procedure TFrameBGLSequencer.DeleteTimeAt(aTimePos: single);
 var before, after: TCustomSequencerStep;
   delta: single;
 begin
- before := GetStepBefore( aTimePos );
- after := GetstepAfter( aTimePos );
- if (before=NIL) and (after=NIL)
-   then exit; // sequencer is empty
+  before := GetStepBefore(aTimePos);
+  after := GetstepAfter(aTimePos);
+  if (before = NIL) and (after = NIL) then exit; // sequencer is empty
 
- if (before<>NIL) and (after=NIL)
-   then exit; // time position is after the last step
+  if (before <> NIL) and (after = NIL) then exit; // time position is after the last step
 
- if (before=NIL) and (after<>NIL) then begin
-   // shift all chronologie to the left
-  delta := -after.TimePos;
-  ShiftStepTimePositionFrom( after, delta );
- end
- else
- if (before<>NIL) and (after<>NIL) then begin
-   // between 2 steps
-  delta := -(after.TimePos-before.TimePos);
-  ShiftStepTimePositionFrom( after, delta );
- end;
+  if (before = NIL) and (after <> NIL) then begin
+    // shift all chronologie to the left
+    delta := -after.TimePos;
+    ShiftStepTimePositionFrom(after, delta);
+  end
+  else
+  if (before <> NIL) and (after <> NIL) then begin
+    // between 2 steps
+    delta := -(after.TimePos-before.TimePos);
+    ShiftStepTimePositionFrom(after, delta);
+  end;
 end;
 
 procedure TFrameBGLSequencer.SetOptions(aSet: TFrameSequencerOptions; AValue: boolean);
 var o: TFrameBGLSequenceOption;
 begin
-  if AValue
-   then for o in aSet do Include(FOptions, o)
-   else for o in aSet do Exclude(FOptions, o);
+  if AValue then for o in aSet do Include(FOptions, o)
+    else for o in aSet do Exclude(FOptions, o);
+
+  if (bglsKeepTimeOriginVisible in aSet) and Avalue then View_BeginTime := 0;
+
   Redraw;
 end;
 
@@ -2177,9 +2192,9 @@ end;
 
 procedure TCustomSequencerStep.SetCaption(AValue: string);
 begin
-  if FCaption=AValue then Exit;
-  FCaption:=AValue;
-  if ParentSeq<>NIL
+  if FCaption = AValue then Exit;
+  FCaption := AValue;
+  if ParentSeq <> NIL
     then ParentSeq.NeedStepsWidthUpdate;
 end;
 
@@ -2191,43 +2206,43 @@ end;
 
 procedure TCustomSequencerStep.SetSelected(AValue: boolean);
 begin
-  if FSelected=AValue then exit;
-  FSelected:=AValue;
+  if FSelected = AValue then exit;
+  FSelected := AValue;
 end;
 
 procedure TCustomSequencerStep.SetGroup(AValue: integer);
 begin
-  if FGroup=AValue then exit;
-  FGroup:=AValue;
+  if FGroup = AValue then exit;
+  FGroup := AValue;
 end;
 
 procedure TCustomSequencerStep.SetDuration(AValue: single);
 begin
-  if FDuration=AValue then exit;
-  FDuration:=AValue;
-  if ParentSeq<>NIL
+  if FDuration = AValue then exit;
+  FDuration := AValue;
+  if ParentSeq <> NIL
     then ParentSeq.NeedStepsWidthUpdate;
 end;
 
 procedure TCustomSequencerStep.UpdateWidth;
 var captionWidth, durationWidth: Integer;
 begin
- if FParentSeq=NIL then exit;
-  captionWidth:=Round(FParentSeq.FStepFont.TextWidth(FCaption));
-  durationWidth:=Round(FParentSeq.PixelPerSecond*FDuration);
-  FWidth:=Max(captionWidth, durationWidth);
+  if FParentSeq = NIL then exit;
+  captionWidth := Round(FParentSeq.FStepFont.TextWidth(FCaption));
+  durationWidth := Round(FParentSeq.PixelPerSecond*FDuration);
+  FWidth := Max(captionWidth, durationWidth);
 end;
 
 constructor TCustomSequencerStep.Create;
 begin
- Top := 0;
- FWidth := 20;
+  Top := 0;
+  FWidth := 20;
 end;
 
 function TCustomSequencerStep.Serialize: string;
 begin
   // override to do the job at your convenience
-  Result:='';
+  Result := '';
 end;
 
 procedure TCustomSequencerStep.Deserialize(const s: string);
@@ -2237,7 +2252,7 @@ end;
 
 function TCustomSequencerStep.CanApplyTimeOffset(aDeltaTime: single): boolean;
 begin
- Result := (TimePos+aDeltaTime)>=0;
+ Result := (TimePos+aDeltaTime) >= 0;
 end;
 
 Initialization
