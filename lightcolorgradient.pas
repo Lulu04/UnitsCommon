@@ -232,10 +232,9 @@ begin
 end;
 
 procedure TColorChartColor.InitFromString(const s: string);
-var
-  A: TStringArray;
+var A: TStringArray;
 begin
-  A:=s.Split([' ']);
+  A := s.Split([' ']);
   InitFromStringArray(A);
 end;
 

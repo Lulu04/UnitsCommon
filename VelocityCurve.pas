@@ -51,6 +51,7 @@ const
 
 function CurveIDToString(ACurveID: word): string;
 function StringToCurveID(ACurveName: string): word;
+function CurveIDIsValid(ACurveID: word): boolean;
 
 type
 
@@ -353,6 +354,11 @@ begin
     else
       Result := idcLinear;
   end;
+end;
+
+function CurveIDIsValid(ACurveID: word): boolean;
+begin
+  Result := ACurveID <= idcSingleRebound;
 end;
 
 function CreateBoundedFParam(Min, Max: single; Loop: boolean): TBoundedFParam;

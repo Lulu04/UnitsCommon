@@ -11,8 +11,6 @@ uses
   generics.collections, Generics.Defaults ;
 
 resourcestring
-  MergeExceptionMessage='TFrame_Sequencer: OnMergeStep is not assigned and you attempts to merge.';
-  SelectedCountErrorExceptionMessage='TFrameBGLSequencer error: FSelectedCount is not valid...';
   NotifyMoveMessage='Move';
   NotifyChangeDurationMessage='Change duration';
   NotifyCutMessage='Cut';
@@ -53,18 +51,20 @@ type
    FWidth: integer;
    procedure SetCaption(AValue: string);
    procedure SetParentSeq(AValue: TFrameBGLSequencer);
-   procedure SetSelected( AValue: boolean );
-   procedure SetGroup ( AValue: integer );
+   procedure SetSelected(AValue: boolean);
+   procedure SetGroup(AValue: integer);
    procedure SetDuration(AValue: single);
   public
    constructor Create;
 
+   procedure Redraw(aParentFrame: TFrameBGLSequencer; aBGLContext: TBGLContext); virtual;
+
    function Serialize: string; virtual;
-   procedure Deserialize( const {%H-}s: string ); virtual;
+   procedure Deserialize(const {%H-}s: string); virtual;
 
    // Return TRUE if TimePos + aDeltaTime >= 0
-   function CanApplyTimeOffset( aDeltaTime: single ): boolean;
-   procedure UpdateWidth;
+   function CanApplyTimeOffset(aDeltaTime: single): boolean;
+   procedure UpdateWidth; virtual;
 
    property ParentSeq: TFrameBGLSequencer read FParentSeq write SetParentSeq;
    property Caption: string read FCaption write SetCaption;
@@ -99,11 +99,11 @@ type
    function GetNextID: integer;
   public
    constructor Create;
-   function Add( constref aStep: TCustomSequencerStep ): SizeInt; override;
+   function Add(constref aStep: TCustomSequencerStep): SizeInt; override;
    procedure FreeSteps;
    procedure ResetID;
-   function IndexOfID( aId: integer ): integer;
-   function GetItemByID( aID: integer ): TCustomSequencerStep;
+   function IndexOfID(aId: integer): integer;
+   function GetItemByID(aID: integer): TCustomSequencerStep;
    property ID: integer read FID write FID;
   end;
 
@@ -118,8 +118,9 @@ type
    TSequencerClickEvent = procedure(Sender: TObject; Button: TMouseButton;
                                     Shift: TShiftState; TimePos: single) of Object;
 
-   TSequencerDuplicateStepEvent = function(aOriginal: TCustomSequencerStep ): TCustomSequencerStep of object;
+   TSequencerDuplicateStepEvent = function(aOriginal: TCustomSequencerStep): TCustomSequencerStep of object;
    TSequencerMergeStepEvent = function: TCustomSequencerStep of object;
+   TNeedErrorSymbolCallback = function(aRenderer: TFrameBGLSequencer): TBGRABitmap of object;
 
    TFrameBGLSequenceOption=(
        // Draws vertical lines to mark the time position of each step.
@@ -164,6 +165,8 @@ type
 
     procedure StepMouseDown(Sender: TCustomSequencerStep;Button: TMouseButton; Shift: TShiftState; {%H-}X, {%H-}Y: Integer);
    protected
+    FOnNeedErrorSymbol: TNeedErrorSymbolCallback;
+    FTextureErrorSymbol: IBGLTexture;
     FStepFont,
     FTimeFont: IBGLRenderedFont;
     FStepFontHeight: integer;
@@ -171,10 +174,9 @@ type
     procedure SetStepFontHeight(AValue: integer);
     procedure CreateOpenGLObjects;
     procedure DeleteOpenGLObjects;
-    // the total height of a step: timepos_height+caption_height+duration_height
-    function StepHeight: integer;
     function VerticalLineCount: integer;
     function AdjustYStepIntoLine(aY: integer): integer;
+    function DoNeedErrorSymbolCallback: TBGRABitmap; virtual;
    private
     FBeginTimeGraduation, FDeltaTimeGraduation: single;
     FCounterSmallGraduation: integer;
@@ -208,10 +210,10 @@ type
     FAlreadyInDragLoop: boolean;
     FUserScrollTheView: boolean;
     FUserDoSelection: boolean;
+    FUserChangeStepDuration: boolean;
     FSelectedCount: integer;
     FCTRLPressed: boolean;   // to duplicate with key CTRL
     FALTPressed: boolean;    // to change the duration of a step with leftClick+ALT
-    FUserChangeStepDuration: boolean;
     FTimeSelectionLow,
     FTimeSelectionHigh: single;
     function GetID: integer;
@@ -270,6 +272,7 @@ type
     FColorXAxis,
     FColorBackground1: TBGRAPixel;
     function GetColorBackground: TColor;
+    function GetStepHeight: integer;
     procedure SetColorBackground(AValue: TColor);
    public
     Selected: ArrayOfCustomSequencerStep;
@@ -421,6 +424,8 @@ type
     property PixelPerSecond: single read FPixelPerSecond write SetPixelPerSecond;
     // Use it to change the font height of the text in the steps
     property StepFontHeight: integer read FStepFontHeight write SetStepFontHeight default 13;
+    // the total height of a step: timepos_height+caption_height+duration_height
+    property StepHeight: integer read GetStepHeight;
 
     // contains the time in second of the beginning (left) of the view
     property View_BeginTime: single read FView_BeginTime write SetView_BeginTime;
@@ -442,7 +447,9 @@ type
     // When the project is saved, this value must be saved also.
     property GroupValue: integer read FGroupValue write FGroupValue;
 
-
+    property StepFont: IBGLRenderedFont read FStepFont;
+    property TimeFont: IBGLRenderedFont read FTimeFont;
+    property TextureErrorSymbol: IBGLTexture read FTextureErrorSymbol;
     property ColorBackground: TColor read GetColorBackground write SetColorBackground;
     property ColorBackground1: TBGRAPixel read FColorBackground1 write FColorBackground1;
     property ColorTimeArea: TBGRAPixel read FColorTimeArea write FColorTimeArea;
@@ -450,6 +457,7 @@ type
     property ColorUserAreaSelection: TBGRAPixel read FColorUserAreaSelection write FColorUserAreaSelection;
     property ColorXAxis: TBGRAPixel read FColorXAxis write FColorXAxis;
 
+    property OnNeedErrorSymbol: TNeedErrorSymbolCallback read FOnNeedErrorSymbol write FOnNeedErrorSymbol;
   end;
 
 
@@ -652,7 +660,7 @@ begin
     LoopUserDragStep;
   end
   else if not FUserIsDragingStep and not FUserChangeStepDuration and not FUserScrollTheView then begin
-    if StepUnderMouse <> NIL then BGLVirtualScreen1.Cursor := crHandPoint
+    if (StepUnderMouse <> NIL) or IsInTimeArea(Y) then BGLVirtualScreen1.Cursor := crHandPoint
       else BGLVirtualScreen1.Cursor := crDefault;
    UpdateMouseCursorPosition;
    Redraw;
@@ -712,7 +720,6 @@ end;
 procedure TFrameBGLSequencer.BGLVirtualScreen1Redraw(Sender: TObject; BGLContext: TBGLContext);
 var i: integer;
     xx, yy, beginTime, endtime: single;
-    bg, fc: TBGRAPixel;
     txt: string;
     step: TCustomSequencerStep;
 begin
@@ -744,10 +751,9 @@ begin
     if bglsAlternateColorForVStepPosition in FOptions then
     begin
       // render the horizontal line in two color
-      xx:=FTimeFont.FullHeight*2+FStepFont.FullHeight;
+      xx := GetStepHeight;
       yy:=0;
       i:=0;
-      bg:=ColorBackground;
       while yy<Height do
       begin
         if i mod 2 = 0 then
@@ -794,64 +800,17 @@ begin
       until  beginTime > endtime;
     end;
 
-    if bglsStepVerticalLineVisible in FOptions then
-    begin
+    if bglsStepVerticalLineVisible in FOptions then begin
       // render vertical line for steps time position
-      for step in FStepList do
-      begin
+      for step in FStepList do begin
         xx := TimePosToAbscissa(step.TimePos);
-        Line( xx, step.Top+FStepFont.FullHeight, xx, yy, BGRA(100,100,100));
+        if (xx >= 0) and (xx < Width) then
+          Line( xx, step.Top+FStepFont.FullHeight, xx, yy, BGRA(100,100,100));
       end;
     end;
 
     // render steps
-    for step in FStepList do
-    begin
-     if step.Group=0 then
-     begin
-       // no group
-       fc := BGRA(160,160,160);
-       bg := RGBToColor(25,25,25);
-     end
-     else begin
-       // with group
-       fc := BGRA(200,200,200);
-       bg := GroupColor[step.Group mod high(GroupColor)+1];
-     end;
-     // because a step can not be on vertical position that is not visible
-     // one forces it to be in Step area, just in case...
-//     if step.Top+FTimeFont.FullHeight*2+FStepFont.FullHeight>StepArea.Height then
-//       step.Top := ForceStepTopToBeInStepArea(step.Top);
-
-     xx := TimePosToAbscissa(step.TimePos);
-     yy := step.Top+FTimeFont.FullHeight;
-     // render step background
-     FillRect(xx, yy, xx+step.Width, yy+FStepFont.FullHeight, bg );
-     // render selected state
-     if step.Selected then
-       Rectangle(xx, yy, xx+step.Width, yy+FStepFont.FullHeight, BGRA(25,255,255), 1.5);
-     // render time position
-     FTimeFont.TextOut(xx, yy-FTimeFont.FullHeight,TimeToString(step.TimePos),BGRA(255,255,0));
-     // render caption
-     FStepFont.TextOut( xx, yy, {step.ID.ToString+' '+}step.Caption, fc);
-     // render duration lines
-     if step.Duration>0 then
-     begin
-       Line(xx, yy, xx, yy+FStepFont.FullHeight, BGRA(255,255,0));
-       Line(xx-1, yy, xx-1, yy+FStepFont.FullHeight, BGRA(255,255,0));
-
-       yy := yy +FStepFont.FullHeight;
-       Line(xx-1, yy,
-            xx-1+step.Duration*FPixelPerSecond, yy,
-            BGRA(255,255,0));
-       Line(xx-1, yy+1,
-            xx-1+step.Duration*FPixelPerSecond, yy+1,
-            BGRA(255,255,0));
-       txt := TimeToString( step.Duration );
-       FTimeFont.TextOut(xx-1+step.Duration*FPixelPerSecond-FTimeFont.TextWidth(txt)*0.5,
-                         yy+1, txt, BGRA(255,255,0));
-     end;
-    end;
+    for step in FStepList do step.ReDraw(Self, BGLContext);
 
     // Mouse cursor
     yy := TimeBase;
@@ -887,6 +846,7 @@ begin
     if not Sender.Selected then begin
       Sel_SelectNone;
       InternalSel_SetSelected(Sender, TRUE);
+      DoSelectionChangeEvent;
       Redraw;
     end;
   end;
@@ -923,7 +883,7 @@ begin
   DoStepClickEvent(Sender, Button, Shift);
 end;
 
-function TFrameBGLSequencer.StepHeight: integer;
+function TFrameBGLSequencer.GetStepHeight: integer;
 begin
   if (FTimeFont <> NIL) and (FStepFont <> NIL)
    then Result := FTimeFont.FullHeight * 2 + FStepFont.FullHeight
@@ -942,6 +902,12 @@ begin
     if Result >= VerticalLineCount then Result := VerticalLineCount - 1;
     Result := Result * hStep;
   end;
+end;
+
+function TFrameBGLSequencer.DoNeedErrorSymbolCallback: TBGRABitmap;
+begin
+  if FOnNeedErrorSymbol <> NIL then Result := FOnNeedErrorSymbol(Self)
+    else Result := NIL;
 end;
 
 procedure TFrameBGLSequencer.ComputeGraduationsParameters;
@@ -1046,7 +1012,7 @@ begin
   Result := NIL;
   if FOnMergeStep<>NIL
     then Result := FOnMergeStep()
-    else Raise Exception.Create(MergeExceptionMessage);
+    else Raise Exception.Create('TFrame_Sequencer: OnMergeStep is not assigned and you attempts to merge.');
 end;
 
 procedure TFrameBGLSequencer.DoMoveStepEvent;
@@ -1294,18 +1260,29 @@ begin
 end;
 
 procedure TFrameBGLSequencer.CreateOpenGLObjects;
+var ima: TBGRABitmap;
+
 begin
   FStepFont := BGLFont('Arial', FStepFontHeight, []);
   FStepFont.Quality := fqSystemClearType;
 
   FTimeFont := BGLFont('Arial', 11, []);
   FTimeFont.Quality := fqSystemClearType;
+
+  if FTextureErrorSymbol = NIL then begin
+    ima := DoNeedErrorSymbolCallback;
+    if ima <> NIL then begin
+      FTextureErrorSymbol := BGLTexture(ima);
+      ima.Free;
+    end;
+  end;
 end;
 
 procedure TFrameBGLSequencer.DeleteOpenGLObjects;
 begin
   FStepFont := NIL;
   FTimeFont := NIL;
+  FTextureErrorSymbol := NIL;
 end;
 
 procedure TFrameBGLSequencer.ForceReconstructOpenGLObjects;
@@ -1512,7 +1489,7 @@ begin
   for s in StepList do
    if s.Selected then begin
      if c>=FSelectedCount
-        then Raise Exception.Create(SelectedCountErrorExceptionMessage);
+        then Raise Exception.Create('TFrameBGLSequencer error: FSelectedCount is not valid...');
     Selected[c] := s;
     inc(c);
    end;
@@ -2237,6 +2214,60 @@ constructor TCustomSequencerStep.Create;
 begin
   Top := 0;
   FWidth := 20;
+end;
+
+procedure TCustomSequencerStep.Redraw(aParentFrame: TFrameBGLSequencer; aBGLContext: TBGLContext);
+var fc, bg: TBGRAPixel;
+  xx, yy, stepFontHeight, timeFontHeight: Integer;
+  txt: String;
+begin
+  xx := aParentFrame.TimePosToAbscissa(TimePos);
+  if (xx >= aBGLContext.Canvas.Width) or (xx + Width <= 0) then exit;
+
+  stepFontHeight := aParentFrame.StepFont.FullHeight;
+  timeFontHeight:= aParentFrame.TimeFont.FullHeight;
+
+  if Group = 0 then begin
+    // no group
+    fc := BGRA(234,234,234);
+    bg := BGRA(25,25,25,100);
+  end else begin
+    // with group
+    fc := BGRA(255,255,255);
+    bg := GroupColor[Group mod high(GroupColor)+1];
+  end;
+  // because a step can not be on vertical position that is not visible
+  // one forces it to be in Step area, just in case...
+//     if step.Top+FTimeFont.FullHeight*2+stepFontHeight>StepArea.Height then
+//       step.Top := ForceStepTopToBeInStepArea(step.Top);
+  with aBGLContext.Canvas do begin
+   yy := Top + timeFontHeight;
+   // render step background
+   FillRect(xx, yy, xx+Self.Width, yy+stepFontHeight, bg);
+   // render selected state
+   if Selected then
+     Rectangle(xx, yy, xx+Self.Width, yy+stepFontHeight, BGRA(25,255,255), 1.5);
+   // render time position
+   aParentFrame.FTimeFont.TextOut(xx, yy-timeFontHeight, TimeToString(TimePos),BGRA(255,255,0));
+   // render caption
+   aParentFrame.FStepFont.TextOut( xx, yy, Caption, fc);
+   // render duration lines
+   if Duration > 0 then begin
+     Line(xx, yy, xx, yy+stepFontHeight, BGRA(255,255,0));
+     Line(xx-1, yy, xx-1, yy+stepFontHeight, BGRA(255,255,0));
+
+     yy := yy + stepFontHeight;
+     Line(xx-1, yy,
+          xx-1+Duration*aParentFrame.PixelPerSecond, yy,
+          BGRA(255,255,0));
+     Line(xx-1, yy+1,
+          xx-1+Duration*aParentFrame.PixelPerSecond, yy+1,
+          BGRA(255,255,0));
+     txt := TimeToString(Duration);
+     aParentFrame.FTimeFont.TextOut(xx-1+Duration*aParentFrame.PixelPerSecond-aParentFrame.FTimeFont.TextWidth(txt)*0.5,
+                       yy+1, txt, BGRA(255,255,0));
+   end;
+  end;
 end;
 
 function TCustomSequencerStep.Serialize: string;

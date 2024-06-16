@@ -20,8 +20,8 @@ TListBoxHelper = class helper for TListBox
    procedure LoadSelectedIndexes( A: TArrayOfInteger; aOffset: integer );
  public
     // The selected items are moved by adding aOffset to their native index
-    // aOffset is first bounded according to items count.
-    // the function return this bounded offset
+    // aOffset is first truncated according to items count.
+    // the function return this truncated offset
    function MoveSelection(aOffset: integer): integer;
 
    procedure MoveSelectionToBeginning;
