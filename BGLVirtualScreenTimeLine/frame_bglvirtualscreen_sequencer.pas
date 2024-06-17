@@ -41,6 +41,7 @@ type
   TCustomSequencerStep = class
   private
    FCaption: string;
+   FDurationBeforeChange: single;
    FParentSeq: TFrameBGLSequencer;
    FID: integer;
    FTimePos: single;
@@ -72,7 +73,7 @@ type
    property Width: integer read FWidth write FWidth;
    // Time position in seconds, from 0 to what you need
    property TimePos: single read FTimePos write FTimePos;
-   // Length of the step in seconds
+   // Duration of the step in seconds
    property Duration: single read FDuration write SetDuration;
    // TRUE if the step is in selected mode
    property Selected: boolean read FSelected write SetSelected;
@@ -80,6 +81,8 @@ type
    property Group: integer read FGroup write SetGroup;
    // Unique step ID
    property ID: integer read FID write FID;
+   // The duration of the step before user change it with ALT+Mouse drag
+   property DurationBeforeChange: single read FDurationBeforeChange write FDurationBeforeChange;
  end;
 
   ArrayOfCustomSequencerStep = array of TCustomSequencerStep;
@@ -224,7 +227,7 @@ type
     function IsInStepArea(aY: integer): boolean;
     procedure SetID(AValue: integer);
     procedure LoopUserDragStep;
-    procedure LoopUserSetStepDuration;
+    procedure LoopUserChangeStepDuration;
     procedure LoopUserDoSelection;
     procedure LoopUserScrollTheViewWithMiddleMouseButton;
    private
@@ -876,7 +879,7 @@ begin
       Sel_SelectNone;
       InternalSel_SetSelected(Sender, TRUE);
     end;
-    LoopUserSetStepDuration;
+    LoopUserChangeStepDuration;
     FALTPressed := FALSE;
   end;
 
@@ -1134,7 +1137,7 @@ begin
   if stepMoved then DoMoveStepEvent;
 end;
 
-procedure TFrameBGLSequencer.LoopUserSetStepDuration;
+procedure TFrameBGLSequencer.LoopUserChangeStepDuration;
 var
  xorigin, xMouse, i: integer;
  deltaTime: single;
@@ -1142,6 +1145,9 @@ var
 begin
   FUserChangeStepDuration := TRUE;
   _notified := FALSE;
+
+  // memorize the current step duration
+  for i:=0 to High(Selected) do Selected[i].DurationBeforeChange := Selected[i].Duration;
 
   xorigin := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
   repeat
@@ -1152,10 +1158,8 @@ begin
        _notified := TRUE;
        Notify(Selected, snChanged, NotifyChangeDurationMessage);
      end;
-     xorigin := xMouse;
      for i:=0 to High(Selected) do
-       if (Selected[i].Duration > 0) and (Selected[i].Duration+deltaTime > 0)
-         then Selected[i].Duration := Selected[i].Duration+deltaTime;
+       Selected[i].Duration := Max(0, Selected[i].DurationBeforeChange+deltaTime);
      Redraw;
    end;
    Sleep(1);
