@@ -685,12 +685,8 @@ begin
     FUserChangeStepDuration := FALSE;
   end;
 
-//  if Button = mbRight then begin
-    if IsInTimeArea(Y) then
-      DoTimeAreaClickEvent(Button, Shift, AbscissaToTimePos(X)+View_BeginTime)
-    else
-      if StepUnderMouse = NIL then DoEmptyAreaClickEvent(Button, Shift, AbscissaToTimePos(X)+View_BeginTime);
-//  end;
+  if IsInTimeArea(Y) then DoTimeAreaClickEvent(Button, Shift, AbscissaToTimePos(X)+View_BeginTime)
+    else if StepUnderMouse = NIL then DoEmptyAreaClickEvent(Button, Shift, AbscissaToTimePos(X)+View_BeginTime);
 end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseWheel(Sender: TObject;
@@ -842,6 +838,8 @@ end;
 procedure TFrameBGLSequencer.StepMouseDown(Sender: TCustomSequencerStep;
   Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
+  if Sender = NIL then exit;
+
   FCTRLPressed := ssCtrl in Shift;
   FALTPressed := ssAlt in Shift;
 
@@ -854,7 +852,7 @@ begin
     end;
   end;
 
-  if (Button = mbLeft) and not FALTPressed then begin // sélectionne le label ou le groupe, et mémorise la position de la souris pour un éventuel DRAG
+  if (Button = mbLeft) and not FALTPressed then begin
     // prepare the drag operation
     FMousePosOrigin := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
     FTimePosOrigin := Sender.TimePos;
@@ -1823,13 +1821,15 @@ begin
 end;
 
 function TFrameBGLSequencer.Sel_CanVerticalShift(delta: integer): boolean;
-var ymax: Integer;
+var stepLine, lineCount: Integer;
   step: TCustomSequencerStep;
 begin
-  ymax := TimeArea.Top-StepFontHeight;
+  lineCount := VerticalLineCount;
   Result := TRUE;
-  for step in Selected do
-    Result := Result and InRange(step.Top+delta,0, ymax);
+  for step in Selected do begin
+    stepLine := (step.Top + delta) div StepHeight;
+    Result := Result and InRange(stepLine, 0, lineCount-1);
+  end;
 end;
 
 procedure TFrameBGLSequencer.Sel_VerticalShift(delta: integer);
