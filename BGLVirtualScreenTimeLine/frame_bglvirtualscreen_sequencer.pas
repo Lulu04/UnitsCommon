@@ -162,7 +162,6 @@ type
     procedure BGLVirtualScreen1MouseWheel(Sender: TObject; Shift: TShiftState; WheelDelta: Integer; {%H-}MousePos: TPoint; var Handled: Boolean);
     procedure BGLVirtualScreen1Redraw(Sender: TObject; BGLContext: TBGLContext);
     procedure BGLVirtualScreen1UnloadTextures(Sender: TObject; {%H-}BGLContext: TBGLContext);
-    procedure FrameExit(Sender: TObject);
     procedure ScrollBar1Scroll(Sender: TObject; {%H-}ScrollCode: TScrollCode;
       var ScrollPos: Integer);
 
@@ -203,17 +202,22 @@ type
     function DoMergeStepEvent: TCustomSequencerStep; virtual;
     procedure DoMoveStepEvent; virtual;
     procedure DoUserChangeDurationEvent; virtual;
+   private type
+    TFrameGBLSequencerState=(
+         fsmsReleased,
+         fsmsCanDragStep,
+         fsmsUserIsDraggingStep,
+         fsmsUserIsScrollingView,
+         fsmsUserIsSelecting,
+         fsmsUserChangeStepDuration
+      );
    private
+    FState: TFrameGBLSequencerState;
     FStepList: TStepList;
     FDuplicateValue: integer;
     FGroupValue: integer;
     FMousePosOrigin: TPoint;
     FTimePosOrigin: single;
-    FUserIsDragingStep: boolean;
-    FAlreadyInDragLoop: boolean;
-    FUserScrollTheView: boolean;
-    FUserDoSelection: boolean;
-    FUserChangeStepDuration: boolean;
     FSelectedCount: integer;
     FCTRLPressed: boolean;   // to duplicate with key CTRL
     FALTPressed: boolean;    // to change the duration of a step with leftClick+ALT
@@ -596,7 +600,7 @@ var
   clickedStep: TCustomSequencerStep;
 begin
   // Click on step
-  if not FUserIsDragingStep and not FUserScrollTheView and not FUserChangeStepDuration then begin
+  if FState = fsmsReleased then begin
     clickedStep := StepUnderMouse;
     if clickedStep <> NIL then begin
       StepMouseDown(clickedStep, Button, Shift, X, Y);
@@ -605,21 +609,14 @@ begin
   end;
 
   // Scroll the view with mouse middle button
-  if (Button = mbMiddle)
-     and not FUserIsDragingStep
-     and not (bglsKeepTimeOriginVisible in FOptions) then
+  if (Button = mbMiddle) and (FState = fsmsReleased) and not (bglsKeepTimeOriginVisible in FOptions) then
     LoopUserScrollTheViewWithMiddleMouseButton;
 
-  if (Button = mbRight) and not FUserScrollTheView and not FUserIsDragingStep then
-  begin
-  end;
-
-  if (Button = mbLeft) and not FUserScrollTheView then
+  if (Button = mbLeft) and (FState = fsmsReleased) then
   begin              // unselect all and enter in the step selection loop
     ForceNoAreaSelected;
     Sel_SelectNone;
     DoSelectionChangeEvent;
-    FUserIsDragingStep := FALSE;
     LoopUserDoSelection;
   end;
 
@@ -630,12 +627,6 @@ procedure TFrameBGLSequencer.BGLVirtualScreen1UnloadTextures(Sender: TObject;  B
 begin
   FStepFont := NIL;
   FTimeFont := NIL;
-end;
-
-procedure TFrameBGLSequencer.FrameExit(Sender: TObject);
-begin
-  Sel_SelectNone;
-  Redraw;
 end;
 
 procedure TFrameBGLSequencer.ScrollBar1Scroll(Sender: TObject;
@@ -659,10 +650,10 @@ end;
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseMove(Sender: TObject;
   Shift: TShiftState; X, Y: Integer);
 begin
-  if FUserIsDragingStep then begin // drag step
+  if FState = fsmsCanDragStep then begin // drag step
     LoopUserDragStep;
   end
-  else if not FUserIsDragingStep and not FUserChangeStepDuration and not FUserScrollTheView then begin
+  else if FState = fsmsReleased then begin
     if (StepUnderMouse <> NIL) or IsInTimeArea(Y) then BGLVirtualScreen1.Cursor := crHandPoint
       else BGLVirtualScreen1.Cursor := crDefault;
    UpdateMouseCursorPosition;
@@ -674,15 +665,14 @@ procedure TFrameBGLSequencer.BGLVirtualScreen1MouseUp(Sender: TObject;
   Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   if (Button = mbMiddle) then begin // end of scroll of the view
-    FUserScrollTheView := FALSE;
+    FState := fsmsReleased;
     BGLVirtualScreen1.Cursor := crDefault;
     exit;
   end;
 
   if Button = mbLeft then begin
-    FUserIsDragingStep := FALSE;
-    FUserDoSelection := FALSE;
-    FUserChangeStepDuration := FALSE;
+    if FState in [fsmsUserIsSelecting, fsmsUserIsDraggingStep, fsmsUserChangeStepDuration, fsmsCanDragStep] then
+      FState := fsmsReleased;
   end;
 
   if IsInTimeArea(Y) then DoTimeAreaClickEvent(Button, Shift, AbscissaToTimePos(X)+View_BeginTime)
@@ -856,7 +846,7 @@ begin
     // prepare the drag operation
     FMousePosOrigin := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos);
     FTimePosOrigin := Sender.TimePos;
-    FUserIsDragingStep := TRUE;
+    FState := fsmsCanDragStep;
     if not FCTRLPressed then begin
       // update selected state
       if not (ssShift in Shift) then begin
@@ -871,8 +861,8 @@ begin
   end;
 
   // change the duration of the step
-  if (Button = mbLeft) and FALTPressed and (Sender.Duration > 0) and
-     not FUserChangeStepDuration then begin
+  if (Button = mbLeft) and FALTPressed {and (Sender.Duration > 0)} and
+     (FState <> fsmsUserChangeStepDuration) then begin
     if not Sender.Selected then begin
       Sel_SelectNone;
       InternalSel_SetSelected(Sender, TRUE);
@@ -1072,8 +1062,8 @@ var
  deltaTime, delta: single;
  stepMoved, _notified, canDuplicate: boolean;
 begin
-  if FAlreadyInDragLoop then exit;
-  FAlreadyInDragLoop := TRUE;
+  if FState = fsmsUserIsDraggingStep then exit;
+  FState := fsmsUserIsDraggingStep;
   BGLVirtualScreen1.Cursor := crDrag;
 
   XscrollTriggerLeft := 1;
@@ -1124,14 +1114,13 @@ begin
    end;
 
    Application.ProcessMessages;
-  until not FUserIsDragingStep;
+  until FState <> fsmsUserIsDraggingStep;
 
   FStepList.Sort;
 
   Redraw;
   BGLVirtualScreen1.Cursor := crDefault;
   FCTRLPressed := FALSE;
-  FAlreadyInDragLoop := FALSE;
   if stepMoved then DoMoveStepEvent;
 end;
 
@@ -1141,7 +1130,7 @@ var
  deltaTime: single;
  _notified: boolean;
 begin
-  FUserChangeStepDuration := TRUE;
+  FState := fsmsUserChangeStepDuration;
   _notified := FALSE;
 
   // memorize the current step duration
@@ -1162,7 +1151,7 @@ begin
    end;
    Sleep(1);
    Application.ProcessMessages;
-  until not FUserChangeStepDuration;
+  until FState <> fsmsUserChangeStepDuration;
 
   if _notified then DoUserChangeDurationEvent;
 end;
@@ -1173,7 +1162,7 @@ var
  oldLow, oldHigh, delta, timeorigin, timemouse: single;
  redraw_flag: boolean ;
 begin
-  FUserDoSelection := TRUE;
+  FState := fsmsUserIsSelecting;
   BGLVirtualScreen1.Cursor := crHSplit;
 
   timeorigin := AbscissaToTimePos(BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X)+View_BeginTime;
@@ -1217,7 +1206,7 @@ begin
    if redraw_flag then Redraw;
    Application.ProcessMessages;
    sleep(1);
-  until not FUserDoSelection;
+  until FState <> fsmsUserIsSelecting;
 
   // on recherche les étapes inclusent dans la sélection et on les sélectionne
   for i:=0 to FStepList.Count-1 do
@@ -1239,7 +1228,8 @@ var deltaTime: single;
     p: TPoint;
     xorigine: LongInt;
 begin
-  FUserScrollTheView := TRUE;
+  FState := fsmsUserIsScrollingView;
+
   BGLVirtualScreen1.Cursor := crSizeWE;
   xorigine := BGLVirtualScreen1.ScreenToClient(Mouse.CursorPos).X;
   repeat
@@ -1248,7 +1238,7 @@ begin
    deltaTime := (p.x - xorigine) / PixelPerSecond * 0.05;
    View_BeginTime := View_BeginTime+deltaTime;
    Application.ProcessMessages;
-  until not FUserScrollTheView;
+  until FState = fsmsReleased;
   BGLVirtualScreen1.Cursor := crDefault;
 end;
 
@@ -1518,6 +1508,7 @@ begin
   {$endif}
 
   FOpenGLObjectsNeedToBeReconstruct := True;
+  FState := fsmsReleased;
 end;
 
 destructor TFrameBGLSequencer.Destroy;

@@ -3,24 +3,24 @@
 LazarusResources.Add('TFrameBGLSequencer','FORMDATA',[
   'TPF0'#18'TFrameBGLSequencer'#17'FrameBGLSequencer'#4'Left'#2#0#6'Height'#3
   +#240#0#3'Top'#2#0#5'Width'#3'@'#1#12'ClientHeight'#3#240#0#11'ClientWidth'#3
-  +'@'#1#6'OnExit'#7#9'FrameExit'#8'TabOrder'#2#0#7'TabStop'#9#10'DesignLeft'#3
-  +#210#1#9'DesignTop'#3#226#0#0#17'TBGLVirtualScreen'#17'BGLVirtualScreen1'#22
-  +'AnchorSideLeft.Control'#7#5'Owner'#21'AnchorSideTop.Control'#7#5'Owner'#23
-  +'AnchorSideRight.Control'#7#5'Owner'#20'AnchorSideRight.Side'#7#9'asrBottom'
-  +#24'AnchorSideBottom.Control'#7#10'ScrollBar1'#4'Left'#2#0#6'Height'#3#227#0
-  +#3'Top'#2#0#5'Width'#3'@'#1#8'OnRedraw'#7#23'BGLVirtualScreen1Redraw'#7'Anch'
-  +'ors'#11#5'akTop'#6'akLeft'#7'akRight'#8'akBottom'#0#10'BevelWidth'#2#0#5'Co'
-  +'lor'#4#13#13#13#0#11'ParentColor'#8#8'TabOrder'#2#0#14'UseDockManager'#8#16
-  +'OnUnloadTextures'#7#31'BGLVirtualScreen1UnloadTextures'#11'OnMouseDown'#7#26
-  +'BGLVirtualScreen1MouseDown'#12'OnMouseEnter'#7#27'BGLVirtualScreen1MouseEnt'
-  +'er'#12'OnMouseLeave'#7#27'BGLVirtualScreen1MouseLeave'#11'OnMouseMove'#7#26
-  +'BGLVirtualScreen1MouseMove'#9'OnMouseUp'#7#24'BGLVirtualScreen1MouseUp'#12
-  +'OnMouseWheel'#7#27'BGLVirtualScreen1MouseWheel'#0#0#10'TScrollBar'#10'Scrol'
-  +'lBar1'#22'AnchorSideLeft.Control'#7#5'Owner'#23'AnchorSideRight.Control'#7#5
-  +'Owner'#20'AnchorSideRight.Side'#7#9'asrBottom'#24'AnchorSideBottom.Control'
-  +#7#5'Owner'#21'AnchorSideBottom.Side'#7#9'asrBottom'#4'Left'#2#0#6'Height'#2
-  +#13#3'Top'#3#227#0#5'Width'#3'@'#1#7'Anchors'#11#6'akLeft'#7'akRight'#8'akBo'
-  +'ttom'#0#21'Constraints.MaxHeight'#2#22#11'LargeChange'#2'2'#3'Max'#3','#1#8
-  +'PageSize'#2#10#11'SmallChange'#2#10#8'TabOrder'#2#1#7'TabStop'#8#8'OnScroll'
-  +#7#16'ScrollBar1Scroll'#0#0#0
+  +'@'#1#8'TabOrder'#2#0#7'TabStop'#9#10'DesignLeft'#3#210#1#9'DesignTop'#3#226
+  +#0#0#17'TBGLVirtualScreen'#17'BGLVirtualScreen1'#22'AnchorSideLeft.Control'#7
+  +#5'Owner'#21'AnchorSideTop.Control'#7#5'Owner'#23'AnchorSideRight.Control'#7
+  +#5'Owner'#20'AnchorSideRight.Side'#7#9'asrBottom'#24'AnchorSideBottom.Contro'
+  +'l'#7#10'ScrollBar1'#4'Left'#2#0#6'Height'#3#227#0#3'Top'#2#0#5'Width'#3'@'#1
+  +#8'OnRedraw'#7#23'BGLVirtualScreen1Redraw'#7'Anchors'#11#5'akTop'#6'akLeft'#7
+  +'akRight'#8'akBottom'#0#10'BevelWidth'#2#0#5'Color'#4#13#13#13#0#11'ParentCo'
+  +'lor'#8#8'TabOrder'#2#0#14'UseDockManager'#8#16'OnUnloadTextures'#7#31'BGLVi'
+  +'rtualScreen1UnloadTextures'#11'OnMouseDown'#7#26'BGLVirtualScreen1MouseDown'
+  +#12'OnMouseEnter'#7#27'BGLVirtualScreen1MouseEnter'#12'OnMouseLeave'#7#27'BG'
+  +'LVirtualScreen1MouseLeave'#11'OnMouseMove'#7#26'BGLVirtualScreen1MouseMove'
+  +#9'OnMouseUp'#7#24'BGLVirtualScreen1MouseUp'#12'OnMouseWheel'#7#27'BGLVirtua'
+  +'lScreen1MouseWheel'#0#0#10'TScrollBar'#10'ScrollBar1'#22'AnchorSideLeft.Con'
+  +'trol'#7#5'Owner'#23'AnchorSideRight.Control'#7#5'Owner'#20'AnchorSideRight.'
+  +'Side'#7#9'asrBottom'#24'AnchorSideBottom.Control'#7#5'Owner'#21'AnchorSideB'
+  +'ottom.Side'#7#9'asrBottom'#4'Left'#2#0#6'Height'#2#13#3'Top'#3#227#0#5'Widt'
+  +'h'#3'@'#1#7'Anchors'#11#6'akLeft'#7'akRight'#8'akBottom'#0#21'Constraints.M'
+  +'axHeight'#2#22#11'LargeChange'#2'2'#3'Max'#3','#1#8'PageSize'#2#10#11'Small'
+  +'Change'#2#10#8'TabOrder'#2#1#7'TabStop'#8#8'OnScroll'#7#16'ScrollBar1Scroll'
+  +#0#0#0
 ]);

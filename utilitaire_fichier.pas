@@ -67,7 +67,8 @@ function GetDirectoryContent(const aDirectoryPath: string;
                              : TStringList;
 
 // copie de répertoire entier
-// exemple: ('C:\Lazarus\Poire\', 'D:\Cible',...) va copier tous les fichiers/répertoires de Poire dans Cible.
+// exemple: CopieRepertoire('C:\Lazarus\Poire\', 'D:\Cible',...) va créer le sous-répertoire D:\Cible\Poire
+// puis y copier tous les fichiers/répertoires trouvés dans Poire.
 // Le répertoire 'Cible' doit être existant.
 procedure CopieRepertoire (const aSrc , aDest : string ; aCopierLesSousRepertoires , aEcraserLesFichiersExistants : boolean ) ;
 

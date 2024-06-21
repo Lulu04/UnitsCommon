@@ -5,7 +5,6 @@ object FrameBGLSequencer: TFrameBGLSequencer
   Width = 320
   ClientHeight = 240
   ClientWidth = 320
-  OnExit = FrameExit
   TabOrder = 0
   TabStop = True
   DesignLeft = 466
