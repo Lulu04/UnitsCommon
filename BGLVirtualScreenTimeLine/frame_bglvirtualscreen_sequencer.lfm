@@ -7,8 +7,8 @@ object FrameBGLSequencer: TFrameBGLSequencer
   ClientWidth = 320
   TabOrder = 0
   TabStop = True
-  DesignLeft = 466
-  DesignTop = 226
+  DesignLeft = 479
+  DesignTop = 231
   object BGLVirtualScreen1: TBGLVirtualScreen
     AnchorSideLeft.Control = Owner
     AnchorSideTop.Control = Owner

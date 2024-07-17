@@ -241,7 +241,6 @@ type
    protected
     function ScreenToTimePos( aP: TPoint ): single;
     function XMouseToTime: single;
-    function MouseIsOverSequencer: boolean;
     function YLineUnderMouse: integer;
    private
     FClipBoard: TStepList;
@@ -365,10 +364,15 @@ type
     // zoom on the selected area
     procedure View_ZoomOnSelectedArea;
 
-    // set play cursor visible or not
+    // return true if the mouse is over the sequencer view
+    function MouseIsOverSequencer: boolean;
+
+    // sets play cursor visible or not
     procedure PlayCursorVisible( AValue: boolean );
-    // set play cursor time position
+    // sets play cursor time position
     procedure UpdatePlayCursorPosition( aTimePos: single );
+    // returns True if the sequence is playing
+    function IsPlaying: boolean;
 
     // converts abscissa to time (without adding View_BeginTime)
     function AbscissaToTimePos( aValue: integer ): single;
@@ -612,7 +616,7 @@ begin
   if (Button = mbMiddle) and (FState = fsmsReleased) and not (bglsKeepTimeOriginVisible in FOptions) then
     LoopUserScrollTheViewWithMiddleMouseButton;
 
-  if (Button = mbLeft) and (FState = fsmsReleased) then
+  if (Button = mbLeft) and (FState = fsmsReleased) and not IsPlaying then
   begin              // unselect all and enter in the step selection loop
     ForceNoAreaSelected;
     Sel_SelectNone;
@@ -637,24 +641,24 @@ end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseEnter(Sender: TObject);
 begin
-  FMouseCursorVisible:=TRUE;
+  FMouseCursorVisible := TRUE;
   Redraw;
 end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseLeave(Sender: TObject);
 begin
-  FMouseCursorVisible:=FALSE;
+  FMouseCursorVisible := FALSE;
   Redraw;
 end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1MouseMove(Sender: TObject;
   Shift: TShiftState; X, Y: Integer);
 begin
-  if FState = fsmsCanDragStep then begin // drag step
+  if (FState = fsmsCanDragStep) and not IsPlaying then begin // drag step
     LoopUserDragStep;
   end
   else if FState = fsmsReleased then begin
-    if (StepUnderMouse <> NIL) or IsInTimeArea(Y) then BGLVirtualScreen1.Cursor := crHandPoint
+    if (StepUnderMouse <> NIL) or (IsInTimeArea(Y) and not IsPlaying) then BGLVirtualScreen1.Cursor := crHandPoint
       else BGLVirtualScreen1.Cursor := crDefault;
    UpdateMouseCursorPosition;
    Redraw;
@@ -708,11 +712,12 @@ end;
 
 procedure TFrameBGLSequencer.BGLVirtualScreen1Redraw(Sender: TObject; BGLContext: TBGLContext);
 var i: integer;
-    xx, yy, beginTime, endtime: single;
+    xx, yy, beginTime, endtime, yBigGrad, ySmallGrad, yLegend: single;
     txt: string;
     step: TCustomSequencerStep;
+    c: TBGRAPixel;
 begin
- if not BGLVirtualScreen1.MakeCurrent(false) then
+ if not BGLVirtualScreen1.MakeCurrent(False) then
    exit;
 
   FInvalidateAlreadySent := FALSE;
@@ -741,15 +746,15 @@ begin
     begin
       // render the horizontal line in two color
       xx := GetStepHeight;
-      yy:=0;
-      i:=0;
-      while yy<Height do
+      yy := 0;
+      i := 0;
+      while yy < Height do
       begin
         if i mod 2 = 0 then
           FillRect(0, yy, Width, yy+xx, ColorBackground)
         else
           FillRect(0, yy, Width, yy+xx, FColorBackground1);
-        yy:=yy+xx;
+        yy := yy + xx;
         inc(i);
       end;
     end;
@@ -760,11 +765,14 @@ begin
 
     // selection area
     if AnAreaIsSelected then
-      FillRect( TimePosToAbscissa( FTimeSelectionLow ), 0,
-                TimePosToAbscissa( FTimeSelectionHigh ), BGLContext.Canvas.Height,
-                FColorUserAreaSelection);
+      FillRect(TimePosToAbscissa(FTimeSelectionLow), 0,
+               TimePosToAbscissa(FTimeSelectionHigh), BGLContext.Canvas.Height,
+               FColorUserAreaSelection);
 
     yy := TimeBase;
+    yBigGrad := yy - ScaleDesignToForm(10);
+    ySmallGrad := yy - ScaleDesignToForm(3);
+    yLegend := yBigGrad - FTimeFont.FullHeight;
 
     if bglsTimeAreaVisible in FOptions then begin
       // abscissa axis
@@ -775,14 +783,14 @@ begin
       endtime := View_EndTime;
       repeat
        xx := TimePosToAbscissa(beginTime);
-       Line(xx, yy-10, xx, yy, FColorXAxis);
-       FTimeFont.TextOut( xx, yy-10-FTimeFont.FullHeight, TimeToString( beginTime ), FColorTimeLegend);
+       Line(xx, yBigGrad, xx, yy, FColorXAxis);
+       FTimeFont.TextOut(xx, yLegend, TimeToString(beginTime), FColorTimeLegend);
 
        // small graduations
        for i:=1 to FCounterSmallGraduation do
        begin
          xx := TimePosToAbscissa(beginTime+i*FDeltaTimeGraduation/FCounterSmallGraduation);
-         Line( xx, yy-3, xx, yy, FColorXAxis);
+         Line(xx, ySmallGrad, xx, yy, FColorXAxis);
        end;
 
        beginTime := beginTime + FDeltaTimeGraduation;
@@ -790,36 +798,39 @@ begin
     end;
 
     if bglsStepVerticalLineVisible in FOptions then begin
+      c := BGRA(100,100,100);
       // render vertical line for steps time position
       for step in FStepList do begin
         xx := TimePosToAbscissa(step.TimePos);
         if (xx >= 0) and (xx < Width) then
-          Line( xx, step.Top+FStepFont.FullHeight, xx, yy, BGRA(100,100,100));
+          Line(xx, step.Top+FStepFont.FullHeight, xx, yy, c);
       end;
     end;
-
-    // render steps
-    for step in FStepList do step.ReDraw(Self, BGLContext);
 
     // Mouse cursor
     yy := TimeBase;
     if FMouseCursorVisible then
     begin
-      Line( FMouseCursorX, yy-10-FTimeFont.FullHeight, FMouseCursorX, BGLVirtualScreen1.ClientHeight, BGRA(255,255,255,180));
-      txt := TimeToString(AbscissaToTimePos(FMouseCursorX)+View_BeginTime);
-      xx := FMouseCursorX-trunc(FTimeFont.TextWidth(txt)) div 2;
-      xx := EnsureRange( xx, 0, BGLVirtualScreen1.ClientWidth-trunc(FTimeFont.TextWidth(txt)));
-      FTimeFont.TextOut(xx, yy-10-FTimeFont.FullHeight*2, txt, BGRA(255,255,255,180));
+      c := BGRA(255,255,255,180);
+      Line(FMouseCursorX, 0, FMouseCursorX, TimeArea.Top, c);
+      Line(FMouseCursorX, yLegend, FMouseCursorX, yy, c);
+      txt := TimeToString(AbscissaToTimePos(FMouseCursorX) + View_BeginTime);
+      xx := FMouseCursorX - Trunc(FTimeFont.TextWidth(txt)) div 2;
+      xx := EnsureRange(xx, 0, BGLVirtualScreen1.ClientWidth - Trunc(FTimeFont.TextWidth(txt)));
+      FTimeFont.TextOut(xx, yLegend-FTimeFont.FullHeight, txt, FColorTimeLegend);
     end;
+
+    // render steps
+    for step in FStepList do step.ReDraw(Self, BGLContext);
 
     // Play cursor
     if FPlayCursorVisible then
     begin
       xx := TimePosToAbscissa(FPlayCursorTimePos);
-      Line( xx, 0, xx, BGLVirtualScreen1.ClientHeight, BGRA(0,255,255,190));
+      Line(xx, 0, xx, BGLVirtualScreen1.ClientHeight, BGRA(0,255,255,190));
       txt := TimeToString(FPlayCursorTimePos);
       xx := xx-trunc(FTimeFont.TextWidth(txt)) div 2;
-      xx := EnsureRange( xx, 0, BGLVirtualScreen1.ClientWidth-trunc(FTimeFont.TextWidth(txt)));
+      xx := EnsureRange(xx, 0, BGLVirtualScreen1.ClientWidth-trunc(FTimeFont.TextWidth(txt)));
       FTimeFont.TextOut(xx, yy-10-FTimeFont.FullHeight*2, txt, BGRA(0,255,255,190));
     end;
   end;
@@ -2045,6 +2056,11 @@ begin
   if FPlayCursorTimePos = aTimePos then exit;
   FPlayCursorTimePos := aTimePos;
   Redraw;
+end;
+
+function TFrameBGLSequencer.IsPlaying: boolean;
+begin
+  Result := FPlayCursorVisible = True;
 end;
 
 function TFrameBGLSequencer.AbscissaToTimePos(aValue: integer): single;

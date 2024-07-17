@@ -590,7 +590,7 @@ begin
    if assigned( FOnChange ) then
      FOnChange( FPB );  // callback
 
-   FPB.Invalidate;
+   FPB.Repaint; //.Invalidate;
  end;
 end;
 
@@ -828,8 +828,8 @@ begin
    FY := EnsureRange(Y, 0, FPB.ClientHeight-1);
 
    c := FImage.GetPixel(FX, FY);
+   FPB.Repaint;
    DoChangeColor( c );
-   FPB.Invalidate;
  end;
 end;
 

@@ -202,6 +202,9 @@ procedure FixeOpaciteDeLImage ( aImage : TBGRABitmap ; aOpacite : byte ) ;
 //                  COULEUR
 //
 
+// add a color to each pixel of the image
+procedure AddColor(aImage: TBGRABitmap; aColor: TBGRAPixel);
+
 // teinte une image
 // ENTREE:   aImage       = l'image qu'on veut transformer
 //           aTeinte      = couleur
@@ -508,32 +511,49 @@ begin
  aImage.InvalidateBitmap ;
 end;
 
+procedure AddColor(aImage: TBGRABitmap; aColor: TBGRAPixel);
+var y, x: integer;
+    p: PBGRAPixel;
+    amount: single;
+begin
+  if aColor.alpha = 0 then exit;
+  amount := aColor.alpha / 255;
 
-
+  for y:=0 to aImage.Height-1 do begin
+    p := aImage.ScanLine[y];
+    for x:=1 to aImage.Width do begin
+      if p^.alpha > 0 then begin
+        p^.blue := EnsureRange(Round(aColor.blue*amount) + p^.blue, 0, 255);
+        p^.green := EnsureRange(Round(aColor.green*amount) + p^.green, 0, 255);
+        p^.red := EnsureRange(Round(aColor.red*amount) + p^.red, 0, 255);
+      end;
+      inc(p);
+     end;
+   end;
+end;
 
 // teinte une image
 // ENTREE:   aImage       = l'image qu'on veut transformer
 //           aTeinte      = couleur
 procedure TeinteImage(aImage: TBGRABitmap; aTeinte: TBGRAPixel ) ;
-var yy , xx : integer ;
-    p : PBGRAPixel ;
-    r,r1:double;
+var yy, xx: integer;
+    p: PBGRAPixel;
+    r, r1: single;
 begin
- if aTeinte.alpha = 0 then exit ;
- r := aTeinte.alpha / 255 ;
- r1 := 1 - r ;
+ if aTeinte.alpha = 0 then exit;
+ r := aTeinte.alpha / 255;
+ r1 := 1 - r;
  for yy:=0 to aImage.Height-1 do
   begin
-   p := aImage.ScanLine[yy] ;
+   p := aImage.ScanLine[yy];
    for xx:=1 to aImage.Width do
     begin
-     if p^.alpha > 0
-       then begin
-             p^.blue := round(p^.blue*r1 + aTeinte.blue*r);
-             p^.green := round(p^.green*r1 + aTeinte.green*r);
-             p^.red := round(p^.red*r1 + aTeinte.red*r);
-            end;
-     inc ( p ) ;
+     if p^.alpha > 0 then begin
+       p^.blue := round(p^.blue * r1 + aTeinte.blue * r);
+       p^.green := round(p^.green * r1 + aTeinte.green * r);
+       p^.red := round(p^.red * r1 + aTeinte.red * r);
+     end;
+     inc(p);
     end;
   end;
 end;
