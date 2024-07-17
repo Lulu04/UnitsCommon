@@ -9,7 +9,7 @@ uses
   Classes, SysUtils, Buttons, ExtCtrls,  StdCtrls, Graphics, Controls;
 
 {
-  This is a bunch of utils to workaround certains lacks in LCL
+  This is a bunch of utils for LCL
 }
 
 // Customize the application hints
