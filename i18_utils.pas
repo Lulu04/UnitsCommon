@@ -28,6 +28,8 @@ type
   private
     FLangs: TStringArray;
     FUsedLangID: TLanguageIdentifier;
+  function ValidIndex(aIndex: integer): boolean;
+  function LanguageCount: integer;
   public
     procedure RegisterLanguagesSupportedByApp(const aLangs: TStringArray);
 
@@ -35,6 +37,13 @@ type
     function GetOSLanguage: TLanguageIdentifier;
     // return True if the native OS language is supported by the application
     function OSLanguageIsSupportedByApp: boolean;
+    // convert a language identifier (en, fr...) to an index in the registered languages array.
+    // if the identifier is not found, the function returns 0.
+    function LanguageIdentifierToIndex(const aLanguageIdentifier: string): integer;
+    // Retrieves the language identifier from an index.
+    // Index is the index of a pair of string in the registered languages array.
+    // If the index is out of bounds the function returns the first identifier in the languages array.
+    function IndexToLanguageIdentifier(aIndex: integer): string;
 
     procedure FillComboBoxWithSupportedLanguage(aCB: TComboBox);
 
@@ -67,6 +76,17 @@ uses gettext, LCLTranslator
 {$ENDIF} ;
 
 { TApplicationAvailableLanguages }
+
+function TApplicationAvailableLanguages.ValidIndex(aIndex: integer): boolean;
+begin
+  Result := (aIndex >= 0) and
+            (aIndex <= Length(FLangs) div 2-1);
+end;
+
+function TApplicationAvailableLanguages.LanguageCount: integer;
+begin
+  Result := Length(FLangs) div 2;
+end;
 
 procedure TApplicationAvailableLanguages.RegisterLanguagesSupportedByApp(
   const aLangs: TStringArray);
@@ -126,6 +146,28 @@ begin
     if Result then exit;
     inc(i, 2);
   end;
+end;
+
+function TApplicationAvailableLanguages.LanguageIdentifierToIndex(const aLanguageIdentifier: string): integer;
+var i: integer;
+begin
+  i := 0;
+  while i < High(FLangs) do begin
+    if FLangs[i+1] = aLanguageIdentifier then begin
+      Result := i div 2;
+      exit;
+    end;
+    inc(i, 2);
+  end;
+  Result := 0;
+end;
+
+function TApplicationAvailableLanguages.IndexToLanguageIdentifier(aIndex: integer): string;
+begin
+  if (aIndex >= 0) and (aIndex < LanguageCount) then
+    Result := FLangs[aIndex * 2 + 1]
+  else
+    Result := FLangs[1];
 end;
 
 procedure TApplicationAvailableLanguages.FillComboBoxWithSupportedLanguage(aCB: TComboBox);
